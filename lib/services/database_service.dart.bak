@@ -1,0 +1,733 @@
+// OUTFIT ADVISOR - SQLite DATABASE SCHEMA & SERVICE
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Purpose: Complete SQLite database structure with all CRUD operations
+// Database: SQLite (Local storage)
+// Version: 1.0
+// Models: UserProfile, ClothingItem, SavedOutfit, WearHistory
+//
+// ═════════════════════════════════════════════════════════════════════════════
+
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PART 1: DATABASE SCHEMA - TABLE DEFINITIONS
+// ═════════════════════════════════════════════════════════════════════════════
+
+class DatabaseSchema {
+  /// Database version (increment on schema changes)
+  static const int VERSION = 1;
+
+  /// Database file name
+  static const String DB_NAME = 'outfit_advisor.db';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TABLE 1: users
+  // Purpose: Store user profile information
+  // ═════════════════════════════════════════════════════════════════════════
+  static const String TABLE_USERS = 'users';
+
+  static const String SQL_CREATE_USERS =
+      '''
+    CREATE TABLE $TABLE_USERS (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      image_path TEXT,
+      height REAL NOT NULL DEFAULT 170.0,
+      weight REAL NOT NULL DEFAULT 65.0,
+      skin_tone TEXT NOT NULL DEFAULT 'Medium',
+      body_type TEXT NOT NULL DEFAULT 'Regular',
+      style_personality TEXT NOT NULL DEFAULT 'Classic',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  ''';
+
+  // Column names
+  static const String COL_USER_ID = 'id';
+  static const String COL_USER_NAME = 'name';
+  static const String COL_USER_IMAGE_PATH = 'image_path';
+  static const String COL_USER_HEIGHT = 'height';
+  static const String COL_USER_WEIGHT = 'weight';
+  static const String COL_USER_SKIN_TONE = 'skin_tone';
+  static const String COL_USER_BODY_TYPE = 'body_type';
+  static const String COL_USER_STYLE = 'style_personality';
+  static const String COL_USER_CREATED_AT = 'created_at';
+  static const String COL_USER_UPDATED_AT = 'updated_at';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TABLE 2: user_favorite_colors
+  // Purpose: Many-to-many relationship for user's favorite colors
+  // ═════════════════════════════════════════════════════════════════════════
+  static const String TABLE_USER_COLORS = 'user_favorite_colors';
+
+  static const String SQL_CREATE_USER_COLORS =
+      '''
+    CREATE TABLE $TABLE_USER_COLORS (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      color_name TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES $TABLE_USERS(id) ON DELETE CASCADE,
+      UNIQUE(user_id, color_name)
+    );
+  ''';
+
+  static const String COL_COLOR_ID = 'id';
+  static const String COL_COLOR_USER_ID = 'user_id';
+  static const String COL_COLOR_NAME = 'color_name';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TABLE 3: user_occasions
+  // Purpose: Many-to-many relationship for user's preferred occasions
+  // ═════════════════════════════════════════════════════════════════════════
+  static const String TABLE_USER_OCCASIONS = 'user_occasions';
+
+  static const String SQL_CREATE_USER_OCCASIONS =
+      '''
+    CREATE TABLE $TABLE_USER_OCCASIONS (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      occasion TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES $TABLE_USERS(id) ON DELETE CASCADE,
+      UNIQUE(user_id, occasion)
+    );
+  ''';
+
+  static const String COL_OCCASION_ID = 'id';
+  static const String COL_OCCASION_USER_ID = 'user_id';
+  static const String COL_OCCASION_NAME = 'occasion';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TABLE 4: clothing_items
+  // Purpose: Store individual clothing items in user's wardrobe
+  // ═════════════════════════════════════════════════════════════════════════
+  static const String TABLE_CLOTHING = 'clothing_items';
+
+  static const String SQL_CREATE_CLOTHING =
+      '''
+    CREATE TABLE $TABLE_CLOTHING (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      emoji TEXT,
+      image_path TEXT,
+      color TEXT,
+      brand TEXT,
+      size TEXT,
+      condition TEXT DEFAULT 'Good',
+      is_favorite INTEGER DEFAULT 0,
+      wear_count INTEGER DEFAULT 0,
+      last_worn_at INTEGER,
+      added_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES $TABLE_USERS(id) ON DELETE CASCADE
+    );
+  ''';
+
+  static const String COL_ITEM_ID = 'id';
+  static const String COL_ITEM_USER_ID = 'user_id';
+  static const String COL_ITEM_NAME = 'name';
+  static const String COL_ITEM_CATEGORY = 'category';
+  static const String COL_ITEM_EMOJI = 'emoji';
+  static const String COL_ITEM_IMAGE = 'image_path';
+  static const String COL_ITEM_COLOR = 'color';
+  static const String COL_ITEM_BRAND = 'brand';
+  static const String COL_ITEM_SIZE = 'size';
+  static const String COL_ITEM_CONDITION = 'condition';
+  static const String COL_ITEM_FAVORITE = 'is_favorite';
+  static const String COL_ITEM_WEAR_COUNT = 'wear_count';
+  static const String COL_ITEM_LAST_WORN = 'last_worn_at';
+  static const String COL_ITEM_ADDED = 'added_at';
+  static const String COL_ITEM_UPDATED = 'updated_at';
+
+  // Category constants
+  static const String CAT_TOPS = 'Tops';
+  static const String CAT_BOTTOMS = 'Bottoms';
+  static const String CAT_SHOES = 'Shoes';
+  static const String CAT_JACKETS = 'Jackets';
+  static const String CAT_DRESSES = 'Dresses';
+  static const String CAT_ACCESSORIES = 'Accessories';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TABLE 5: saved_outfits
+  // Purpose: Store outfit suggestions that user has saved
+  // ═════════════════════════════════════════════════════════════════════════
+  static const String TABLE_OUTFITS = 'saved_outfits';
+
+  static const String SQL_CREATE_OUTFITS =
+      '''
+    CREATE TABLE $TABLE_OUTFITS (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT,
+      occasion TEXT,
+      style_type TEXT,
+      notes TEXT,
+      image_preview TEXT,
+      rating INTEGER DEFAULT 0,
+      wear_count INTEGER DEFAULT 0,
+      is_favorite INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES $TABLE_USERS(id) ON DELETE CASCADE
+    );
+  ''';
+
+  static const String COL_OUTFIT_ID = 'id';
+  static const String COL_OUTFIT_USER_ID = 'user_id';
+  static const String COL_OUTFIT_NAME = 'name';
+  static const String COL_OUTFIT_OCCASION = 'occasion';
+  static const String COL_OUTFIT_STYLE_TYPE = 'style_type';
+  static const String COL_OUTFIT_NOTES = 'notes';
+  static const String COL_OUTFIT_IMAGE = 'image_preview';
+  static const String COL_OUTFIT_RATING = 'rating';
+  static const String COL_OUTFIT_WEAR_COUNT = 'wear_count';
+  static const String COL_OUTFIT_FAVORITE = 'is_favorite';
+  static const String COL_OUTFIT_CREATED = 'created_at';
+  static const String COL_OUTFIT_UPDATED = 'updated_at';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TABLE 6: outfit_items
+  // Purpose: Many-to-many between outfits and clothing items
+  // ═════════════════════════════════════════════════════════════════════════
+  static const String TABLE_OUTFIT_ITEMS = 'outfit_items';
+
+  static const String SQL_CREATE_OUTFIT_ITEMS =
+      '''
+    CREATE TABLE $TABLE_OUTFIT_ITEMS (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      outfit_id TEXT NOT NULL,
+      clothing_item_id TEXT NOT NULL,
+      position INTEGER DEFAULT 0,
+      FOREIGN KEY (outfit_id) REFERENCES $TABLE_OUTFITS(id) ON DELETE CASCADE,
+      FOREIGN KEY (clothing_item_id) REFERENCES $TABLE_CLOTHING(id) ON DELETE CASCADE,
+      UNIQUE(outfit_id, clothing_item_id)
+    );
+  ''';
+
+  static const String COL_OUTFIT_ITEM_ID = 'id';
+  static const String COL_OUTFIT_ITEM_OUTFIT_ID = 'outfit_id';
+  static const String COL_OUTFIT_ITEM_CLOTHING_ID = 'clothing_item_id';
+  static const String COL_OUTFIT_ITEM_POSITION = 'position';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TABLE 7: wear_history
+  // Purpose: Track when items were worn (for analytics & suggestions)
+  // ═══════════════════════════════════════════════════════════════
+  static const String TABLE_WEAR_HISTORY = 'wear_history';
+
+  static const String SQL_CREATE_WEAR_HISTORY =
+      '''
+    CREATE TABLE $TABLE_WEAR_HISTORY (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      clothing_item_id TEXT NOT NULL,
+      outfit_id TEXT,
+      wore_date INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES $TABLE_USERS(id) ON DELETE CASCADE,
+      FOREIGN KEY (clothing_item_id) REFERENCES $TABLE_CLOTHING(id) ON DELETE CASCADE,
+      FOREIGN KEY (outfit_id) REFERENCES $TABLE_OUTFITS(id) ON DELETE SET NULL
+    );
+  ''';
+
+  static const String COL_WEAR_ID = 'id';
+  static const String COL_WEAR_USER_ID = 'user_id';
+  static const String COL_WEAR_ITEM_ID = 'clothing_item_id';
+  static const String COL_WEAR_OUTFIT_ID = 'outfit_id';
+  static const String COL_WEAR_DATE = 'wore_date';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // TABLE 8: wardrobe_stats
+  // Purpose: Cache computed statistics about user's wardrobe
+  // ═════════════════════════════════════════════════════════════════════════
+  static const String TABLE_STATS = 'wardrobe_stats';
+
+  static const String SQL_CREATE_STATS =
+      '''
+    CREATE TABLE $TABLE_STATS (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL UNIQUE,
+      total_items INTEGER DEFAULT 0,
+      total_outfits INTEGER DEFAULT 0,
+      favorite_color TEXT,
+      most_worn_category TEXT,
+      avg_items_per_outfit REAL DEFAULT 0.0,
+      last_outfit_date INTEGER,
+      computed_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES $TABLE_USERS(id) ON DELETE CASCADE
+    );
+  ''';
+
+  static const String COL_STATS_ID = 'id';
+  static const String COL_STATS_USER_ID = 'user_id';
+  static const String COL_STATS_TOTAL_ITEMS = 'total_items';
+  static const String COL_STATS_TOTAL_OUTFITS = 'total_outfits';
+  static const String COL_STATS_FAV_COLOR = 'favorite_color';
+  static const String COL_STATS_WORN_CATEGORY = 'most_worn_category';
+  static const String COL_STATS_AVG_ITEMS = 'avg_items_per_outfit';
+  static const String COL_STATS_LAST_OUTFIT = 'last_outfit_date';
+  static const String COL_STATS_COMPUTED = 'computed_at';
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // INDEX DEFINITIONS (for faster queries)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  static const String SQL_CREATE_INDEX_ITEMS_USER =
+      'CREATE INDEX idx_clothing_user_id ON $TABLE_CLOTHING($COL_ITEM_USER_ID);';
+
+  static const String SQL_CREATE_INDEX_ITEMS_CATEGORY =
+      'CREATE INDEX idx_clothing_category ON $TABLE_CLOTHING($COL_ITEM_CATEGORY);';
+
+  static const String SQL_CREATE_INDEX_ITEMS_ADDED =
+      'CREATE INDEX idx_clothing_added_at ON $TABLE_CLOTHING($COL_ITEM_ADDED DESC);';
+
+  static const String SQL_CREATE_INDEX_OUTFITS_USER =
+      'CREATE INDEX idx_outfits_user_id ON $TABLE_OUTFITS($COL_OUTFIT_USER_ID);';
+
+  static const String SQL_CREATE_INDEX_WEAR_HISTORY_USER =
+      'CREATE INDEX idx_wear_history_user ON $TABLE_WEAR_HISTORY($COL_WEAR_USER_ID);';
+
+  static const String SQL_CREATE_INDEX_WEAR_HISTORY_DATE =
+      'CREATE INDEX idx_wear_history_date ON $TABLE_WEAR_HISTORY($COL_WEAR_DATE DESC);';
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PART 2: DATABASE SERVICE - CRUD OPERATIONS & QUERIES
+// ═════════════════════════════════════════════════════════════════════════════
+
+class OutfitAdvisorDatabase {
+  static final OutfitAdvisorDatabase _instance =
+      OutfitAdvisorDatabase._internal();
+
+  factory OutfitAdvisorDatabase() {
+    return _instance;
+  }
+
+  OutfitAdvisorDatabase._internal();
+
+  static Database? _database;
+
+  Future<Database> get database async {
+    _database ??= await _initDatabase();
+    return _database!;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DATABASE INITIALIZATION
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<Database> _initDatabase() async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, DatabaseSchema.DB_NAME);
+
+    return openDatabase(
+      path,
+      version: DatabaseSchema.VERSION,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+      onConfigure: _onConfigure,
+    );
+  }
+
+  Future<void> _onConfigure(Database db) async {
+    // Enable foreign keys
+    await db.execute('PRAGMA foreign_keys = ON');
+  }
+
+  Future<void> _onCreate(Database db, int version) async {
+    // Create all tables in correct order
+    await db.execute(DatabaseSchema.SQL_CREATE_USERS);
+    await db.execute(DatabaseSchema.SQL_CREATE_USER_COLORS);
+    await db.execute(DatabaseSchema.SQL_CREATE_USER_OCCASIONS);
+    await db.execute(DatabaseSchema.SQL_CREATE_CLOTHING);
+    await db.execute(DatabaseSchema.SQL_CREATE_OUTFITS);
+    await db.execute(DatabaseSchema.SQL_CREATE_OUTFIT_ITEMS);
+    await db.execute(DatabaseSchema.SQL_CREATE_WEAR_HISTORY);
+    await db.execute(DatabaseSchema.SQL_CREATE_STATS);
+
+    // Create indexes for faster queries
+    await db.execute(DatabaseSchema.SQL_CREATE_INDEX_ITEMS_USER);
+    await db.execute(DatabaseSchema.SQL_CREATE_INDEX_ITEMS_CATEGORY);
+    await db.execute(DatabaseSchema.SQL_CREATE_INDEX_ITEMS_ADDED);
+    await db.execute(DatabaseSchema.SQL_CREATE_INDEX_OUTFITS_USER);
+    await db.execute(DatabaseSchema.SQL_CREATE_INDEX_WEAR_HISTORY_USER);
+    await db.execute(DatabaseSchema.SQL_CREATE_INDEX_WEAR_HISTORY_DATE);
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    // Handle future schema migrations here
+    // For now, this is for version 1
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // USER OPERATIONS
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /// Create or update user profile
+  Future<void> upsertUser({
+    required String id,
+    required String name,
+    required double height,
+    required double weight,
+    required String skinTone,
+    required String bodyType,
+    required String stylePersonality,
+    String? imagePath,
+  }) async {
+    final db = await database;
+    final now = DateTime.now();
+    final ms = now.millisecondsSinceEpoch;
+
+    await db.insert(DatabaseSchema.TABLE_USERS, {
+      DatabaseSchema.COL_USER_ID: id,
+      DatabaseSchema.COL_USER_NAME: name,
+      DatabaseSchema.COL_USER_IMAGE_PATH: imagePath,
+      DatabaseSchema.COL_USER_HEIGHT: height,
+      DatabaseSchema.COL_USER_WEIGHT: weight,
+      DatabaseSchema.COL_USER_SKIN_TONE: skinTone,
+      DatabaseSchema.COL_USER_BODY_TYPE: bodyType,
+      DatabaseSchema.COL_USER_STYLE: stylePersonality,
+      DatabaseSchema.COL_USER_CREATED_AT: ms,
+      DatabaseSchema.COL_USER_UPDATED_AT: ms,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Get user by ID
+  Future<Map<String, dynamic>?> getUser(String userId) async {
+    final db = await database;
+    final results = await db.query(
+      DatabaseSchema.TABLE_USERS,
+      where: '${DatabaseSchema.COL_USER_ID} = ?',
+      whereArgs: [userId],
+      limit: 1,
+    );
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  /// Update user profile
+  Future<int> updateUser({
+    required String id,
+    String? name,
+    String? imagePath,
+    double? height,
+    double? weight,
+    String? skinTone,
+    String? bodyType,
+    String? stylePersonality,
+  }) async {
+    final db = await database;
+    final updates = <String, dynamic>{};
+
+    if (name != null) updates[DatabaseSchema.COL_USER_NAME] = name;
+    if (imagePath != null) {
+      updates[DatabaseSchema.COL_USER_IMAGE_PATH] = imagePath;
+    }
+    if (height != null) updates[DatabaseSchema.COL_USER_HEIGHT] = height;
+    if (weight != null) updates[DatabaseSchema.COL_USER_WEIGHT] = weight;
+    if (skinTone != null) updates[DatabaseSchema.COL_USER_SKIN_TONE] = skinTone;
+    if (bodyType != null) updates[DatabaseSchema.COL_USER_BODY_TYPE] = bodyType;
+    if (stylePersonality != null) {
+      updates[DatabaseSchema.COL_USER_STYLE] = stylePersonality;
+    }
+
+    updates[DatabaseSchema.COL_USER_UPDATED_AT] =
+        DateTime.now().millisecondsSinceEpoch;
+
+    return db.update(
+      DatabaseSchema.TABLE_USERS,
+      updates,
+      where: '${DatabaseSchema.COL_USER_ID} = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // USER FAVORITE COLORS OPERATIONS
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /// Add favorite color for user
+  Future<void> addFavoriteColor(String userId, String colorName) async {
+    final db = await database;
+    await db.insert(
+      DatabaseSchema.TABLE_USER_COLORS,
+      {
+        DatabaseSchema.COL_COLOR_USER_ID: userId,
+        DatabaseSchema.COL_COLOR_NAME: colorName,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  /// Remove favorite color
+  Future<int> removeFavoriteColor(String userId, String colorName) async {
+    final db = await database;
+    return db.delete(
+      DatabaseSchema.TABLE_USER_COLORS,
+      where:
+          '${DatabaseSchema.COL_COLOR_USER_ID} = ? AND ${DatabaseSchema.COL_COLOR_NAME} = ?',
+      whereArgs: [userId, colorName],
+    );
+  }
+
+  /// Get all favorite colors for user
+  Future<List<String>> getFavoriteColors(String userId) async {
+    final db = await database;
+    final results = await db.query(
+      DatabaseSchema.TABLE_USER_COLORS,
+      where: '${DatabaseSchema.COL_COLOR_USER_ID} = ?',
+      whereArgs: [userId],
+      orderBy: '${DatabaseSchema.COL_COLOR_NAME} ASC',
+    );
+
+    return results
+        .map((row) => row[DatabaseSchema.COL_COLOR_NAME] as String)
+        .toList();
+  }
+
+  /// Replace all favorite colors
+  Future<void> setFavoriteColors(String userId, List<String> colors) async {
+    final db = await database;
+
+    // Delete existing
+    await db.delete(
+      DatabaseSchema.TABLE_USER_COLORS,
+      where: '${DatabaseSchema.COL_COLOR_USER_ID} = ?',
+      whereArgs: [userId],
+    );
+
+    // Insert new ones
+    for (final color in colors) {
+      await addFavoriteColor(userId, color);
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // USER OCCASIONS OPERATIONS
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /// Add occasion for user
+  Future<void> addOccasion(String userId, String occasion) async {
+    final db = await database;
+    await db.insert(
+      DatabaseSchema.TABLE_USER_OCCASIONS,
+      {
+        DatabaseSchema.COL_OCCASION_USER_ID: userId,
+        DatabaseSchema.COL_OCCASION_NAME: occasion,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  /// Remove occasion
+  Future<int> removeOccasion(String userId, String occasion) async {
+    final db = await database;
+    return db.delete(
+      DatabaseSchema.TABLE_USER_OCCASIONS,
+      where:
+          '${DatabaseSchema.COL_OCCASION_USER_ID} = ? AND ${DatabaseSchema.COL_OCCASION_NAME} = ?',
+      whereArgs: [userId, occasion],
+    );
+  }
+
+  /// Get all occasions for user
+  Future<List<String>> getOccasions(String userId) async {
+    final db = await database;
+    final results = await db.query(
+      DatabaseSchema.TABLE_USER_OCCASIONS,
+      where: '${DatabaseSchema.COL_OCCASION_USER_ID} = ?',
+      whereArgs: [userId],
+      orderBy: '${DatabaseSchema.COL_OCCASION_NAME} ASC',
+    );
+
+    return results
+        .map((row) => row[DatabaseSchema.COL_OCCASION_NAME] as String)
+        .toList();
+  }
+
+  /// Replace all occasions
+  Future<void> setOccasions(String userId, List<String> occasions) async {
+    final db = await database;
+
+    await db.delete(
+      DatabaseSchema.TABLE_USER_OCCASIONS,
+      where: '${DatabaseSchema.COL_OCCASION_USER_ID} = ?',
+      whereArgs: [userId],
+    );
+
+    for (final occasion in occasions) {
+      await addOccasion(userId, occasion);
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // CLOTHING ITEMS OPERATIONS
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /// Add new clothing item
+  Future<void> insertClothingItem({
+    required String id,
+    required String userId,
+    required String name,
+    required String category,
+    String? emoji,
+    String? imagePath,
+    String? color,
+    String? brand,
+    String? size,
+    String? condition,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await db.insert(DatabaseSchema.TABLE_CLOTHING, {
+      DatabaseSchema.COL_ITEM_ID: id,
+      DatabaseSchema.COL_ITEM_USER_ID: userId,
+      DatabaseSchema.COL_ITEM_NAME: name,
+      DatabaseSchema.COL_ITEM_CATEGORY: category,
+      DatabaseSchema.COL_ITEM_EMOJI: emoji,
+      DatabaseSchema.COL_ITEM_IMAGE: imagePath,
+      DatabaseSchema.COL_ITEM_COLOR: color,
+      DatabaseSchema.COL_ITEM_BRAND: brand,
+      DatabaseSchema.COL_ITEM_SIZE: size,
+      DatabaseSchema.COL_ITEM_CONDITION: condition ?? 'Good',
+      DatabaseSchema.COL_ITEM_ADDED: now,
+      DatabaseSchema.COL_ITEM_UPDATED: now,
+    });
+  }
+
+  /// Get clothing item by ID
+  Future<Map<String, dynamic>?> getClothingItem(String itemId) async {
+    final db = await database;
+    final results = await db.query(
+      DatabaseSchema.TABLE_CLOTHING,
+      where: '${DatabaseSchema.COL_ITEM_ID} = ?',
+      whereArgs: [itemId],
+      limit: 1,
+    );
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  /// Get all clothing items for user
+  Future<List<Map<String, dynamic>>> getUserClothingItems(
+    String userId, {
+    String? categoryFilter,
+    String? orderBy,
+  }) async {
+    final db = await database;
+
+    String? whereClause = '${DatabaseSchema.COL_ITEM_USER_ID} = ?';
+    List<dynamic> whereArgs = [userId];
+
+    if (categoryFilter != null) {
+      whereClause += ' AND ${DatabaseSchema.COL_ITEM_CATEGORY} = ?';
+      whereArgs.add(categoryFilter);
+    }
+
+    return db.query(
+      DatabaseSchema.TABLE_CLOTHING,
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: orderBy ?? '${DatabaseSchema.COL_ITEM_ADDED} DESC',
+    );
+  }
+
+  /// Get recently added items
+  Future<List<Map<String, dynamic>>> getRecentClothingItems(
+    String userId, {
+    int limit = 5,
+  }) async {
+    final db = await database;
+    return db.query(
+      DatabaseSchema.TABLE_CLOTHING,
+      where: '${DatabaseSchema.COL_ITEM_USER_ID} = ?',
+      whereArgs: [userId],
+      orderBy: '${DatabaseSchema.COL_ITEM_ADDED} DESC',
+      limit: limit,
+    );
+  }
+
+  /// Update clothing item
+  Future<int> updateClothingItem(
+    String itemId, {
+    String? name,
+    String? category,
+    String? emoji,
+    String? imagePath,
+    String? color,
+    String? brand,
+    String? size,
+    String? condition,
+    bool? isFavorite,
+  }) async {
+    final db = await database;
+    final updates = <String, dynamic>{};
+
+    if (name != null) updates[DatabaseSchema.COL_ITEM_NAME] = name;
+    if (category != null) updates[DatabaseSchema.COL_ITEM_CATEGORY] = category;
+    if (emoji != null) updates[DatabaseSchema.COL_ITEM_EMOJI] = emoji;
+    if (imagePath != null) updates[DatabaseSchema.COL_ITEM_IMAGE] = imagePath;
+    if (color != null) updates[DatabaseSchema.COL_ITEM_COLOR] = color;
+    if (brand != null) updates[DatabaseSchema.COL_ITEM_BRAND] = brand;
+    if (size != null) updates[DatabaseSchema.COL_ITEM_SIZE] = size;
+    if (condition != null) {
+      updates[DatabaseSchema.COL_ITEM_CONDITION] = condition;
+    }
+    if (isFavorite != null) {
+      updates[DatabaseSchema.COL_ITEM_FAVORITE] = isFavorite ? 1 : 0;
+    }
+
+    updates[DatabaseSchema.COL_ITEM_UPDATED] =
+        DateTime.now().millisecondsSinceEpoch;
+
+    return db.update(
+      DatabaseSchema.TABLE_CLOTHING,
+      updates,
+      where: '${DatabaseSchema.COL_ITEM_ID} = ?',
+      whereArgs: [itemId],
+    );
+  }
+
+  /// Toggle favorite status
+  Future<int> toggleFavorite(String itemId) async {
+    final db = await database;
+    final item = await getClothingItem(itemId);
+    if (item == null) return 0;
+
+    final isFavorite = (item[DatabaseSchema.COL_ITEM_FAVORITE] as int?) ?? 0;
+    return updateClothingItem(itemId, isFavorite: isFavorite == 0);
+  }
+
+  /// Delete clothing item
+  Future<int> deleteClothingItem(String itemId) async {
+    final db = await database;
+    return db.delete(
+      DatabaseSchema.TABLE_CLOTHING,
+      where: '${DatabaseSchema.COL_ITEM_ID} = ?',
+      whereArgs: [itemId],
+    );
+  }
+
+  Future<void> closeDatabase() async {
+    if (_database != null) {
+      Future<void> deleteUserData(String userId) async {
+        final db = await database;
+        await db.transaction((txn) async {
+          // Delete cascade order
+          await txn.delete(
+            DatabaseSchema.TABLE_WEAR_HISTORY,
+            where: '${DatabaseSchema.COL_WEAR_USER_ID} = ?',
+            whereArgs: [userId],
+          );
+          // ... full delete logic
+          await txn.delete(
+            DatabaseSchema.TABLE_USERS,
+            where: '${DatabaseSchema.COL_USER_ID} = ?',
+            whereArgs: [userId],
+          );
+        });
+      }
+    }
+  }
+}
