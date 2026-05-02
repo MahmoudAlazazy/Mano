@@ -109,6 +109,16 @@ class SupabaseService {
     return fallback;
   }
 
+  List<Map<String, dynamic>> _normalizeRows(dynamic response) {
+    if (response is List) {
+      return response
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
   /// Ensure the current user's profile exists in public.users
   Future<void> ensureUserProfileExists(String userId) async {
     final existing = await getUserProfile(userId);
@@ -611,6 +621,230 @@ class SupabaseService {
     } catch (e) {
       return [];
     }
+  }
+
+  Future<Map<String, dynamic>> getAdminSystemSnapshot() async {
+    final tableErrors = <String, String>{};
+
+    Future<List<Map<String, dynamic>>> fetchTable(
+      String table, {
+      String? orderBy,
+      bool ascending = false,
+    }) async {
+      try {
+        dynamic query = client.from(table).select();
+        if (orderBy != null && orderBy.trim().isNotEmpty) {
+          query = query.order(orderBy, ascending: ascending);
+        }
+        final result = await query;
+        return _normalizeRows(result);
+      } catch (e) {
+        tableErrors[table] = e.toString();
+        return const <Map<String, dynamic>>[];
+      }
+    }
+
+    bool parseBool(dynamic value) {
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      if (value is String) {
+        final normalized = value.trim().toLowerCase();
+        return normalized == 'true' || normalized == '1' || normalized == 'yes';
+      }
+      return false;
+    }
+
+    final users = await fetchTable('users', orderBy: 'created_at');
+    final favoriteColors = await fetchTable('user_favorite_colors');
+    final occasions = await fetchTable('user_occasions');
+    final clothingItems = await fetchTable('clothing_items', orderBy: 'added_at');
+    final savedOutfits = await fetchTable('saved_outfits', orderBy: 'created_at');
+    final outfitItems = await fetchTable('outfit_items');
+    final wearHistory = await fetchTable('wear_history', orderBy: 'wore_date');
+    final wardrobeStats = await fetchTable('wardrobe_stats', orderBy: 'updated_at');
+
+    final categoryCounts = <String, int>{};
+    for (final item in clothingItems) {
+      final category = (item['category']?.toString().trim() ?? 'Unknown');
+      categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
+    }
+
+    final sortedCategoryEntries = categoryCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final sortedCategoryCounts = <String, int>{
+      for (final entry in sortedCategoryEntries) entry.key: entry.value,
+    };
+
+    final usersById = <String, Map<String, dynamic>>{};
+    for (final user in users) {
+      final userId = user['id']?.toString();
+      if (userId == null || userId.isEmpty) continue;
+      usersById[userId] = <String, dynamic>{
+        'user': user,
+        'favorite_colors': <String>[],
+        'occasions': <String>[],
+        'clothing_items': <Map<String, dynamic>>[],
+        'saved_outfits': <Map<String, dynamic>>[],
+        'outfit_items': <Map<String, dynamic>>[],
+        'wear_history': <Map<String, dynamic>>[],
+        'wardrobe_stats': null,
+      };
+    }
+
+    for (final row in favoriteColors) {
+      final userId = row['user_id']?.toString();
+      final color = row['color_name']?.toString();
+      if (userId == null || color == null) continue;
+      final bucket = usersById[userId];
+      if (bucket == null) continue;
+      (bucket['favorite_colors'] as List<String>).add(color);
+    }
+
+    for (final row in occasions) {
+      final userId = row['user_id']?.toString();
+      final occasion = row['occasion']?.toString();
+      if (userId == null || occasion == null) continue;
+      final bucket = usersById[userId];
+      if (bucket == null) continue;
+      (bucket['occasions'] as List<String>).add(occasion);
+    }
+
+    final outfitsById = <String, Map<String, dynamic>>{};
+    for (final row in savedOutfits) {
+      final outfitId = row['id']?.toString();
+      if (outfitId != null && outfitId.isNotEmpty) {
+        outfitsById[outfitId] = row;
+      }
+      final userId = row['user_id']?.toString();
+      if (userId == null) continue;
+      final bucket = usersById[userId];
+      if (bucket == null) continue;
+      (bucket['saved_outfits'] as List<Map<String, dynamic>>).add(row);
+    }
+
+    for (final row in clothingItems) {
+      final userId = row['user_id']?.toString();
+      if (userId == null) continue;
+      final bucket = usersById[userId];
+      if (bucket == null) continue;
+      (bucket['clothing_items'] as List<Map<String, dynamic>>).add(row);
+    }
+
+    for (final row in outfitItems) {
+      final outfitId = row['outfit_id']?.toString();
+      if (outfitId != null) {
+        final outfit = outfitsById[outfitId];
+        if (outfit != null) {
+          final outfitUserId = outfit['user_id']?.toString();
+          final bucket = outfitUserId == null ? null : usersById[outfitUserId];
+          if (bucket != null) {
+            (bucket['outfit_items'] as List<Map<String, dynamic>>).add(row);
+          }
+        }
+      }
+    }
+
+    for (final row in wearHistory) {
+      final userId = row['user_id']?.toString();
+      if (userId == null) continue;
+      final bucket = usersById[userId];
+      if (bucket == null) continue;
+      (bucket['wear_history'] as List<Map<String, dynamic>>).add(row);
+    }
+
+    for (final row in wardrobeStats) {
+      final userId = row['user_id']?.toString();
+      if (userId == null) continue;
+      final bucket = usersById[userId];
+      if (bucket == null) continue;
+      bucket['wardrobe_stats'] = row;
+    }
+
+    final usersWithWardrobe = clothingItems
+        .map((row) => row['user_id']?.toString())
+        .whereType<String>()
+        .toSet();
+    final usersWithOutfits = savedOutfits
+        .map((row) => row['user_id']?.toString())
+        .whereType<String>()
+        .toSet();
+    final usersWithWearHistory = wearHistory
+        .map((row) => row['user_id']?.toString())
+        .whereType<String>()
+        .toSet();
+
+    final favoriteClothingCount = clothingItems
+        .where((row) => parseBool(row['is_favorite']))
+        .length;
+    final favoriteOutfitsCount = savedOutfits
+        .where((row) => parseBool(row['is_favorite']))
+        .length;
+
+    final currentUserId = this.currentUserId;
+    final isAuthenticated = currentUserId != null;
+    final hasCrossUserData = users.any(
+      (row) => row['id']?.toString().isNotEmpty == true &&
+          row['id']?.toString() != currentUserId,
+    );
+    final accessScope = !isAuthenticated
+        ? 'anonymous'
+        : hasCrossUserData
+            ? 'system_scoped'
+            : 'user_scoped';
+    final hasFullAccess = tableErrors.isEmpty && accessScope == 'system_scoped';
+    final isLikelyRlsLimited = tableErrors.isEmpty && accessScope != 'system_scoped';
+
+    final snapshotWarnings = <String>[
+      if (!isAuthenticated)
+        'No authenticated Supabase session. Anonymous RLS scope usually returns empty data.',
+      if (isAuthenticated && accessScope == 'user_scoped')
+        'Authenticated but still user-scoped by RLS. This is not a full system view.',
+      if (isLikelyRlsLimited && users.isEmpty && clothingItems.isEmpty && savedOutfits.isEmpty)
+        'All major tables returned 0 rows. This usually indicates RLS-limited visibility, not an empty production system.',
+    ];
+
+    return <String, dynamic>{
+      'generated_at': DateTime.now().toIso8601String(),
+      'is_authenticated': isAuthenticated,
+      'current_user_id': currentUserId,
+      'access_scope': accessScope,
+      'has_full_access': hasFullAccess,
+      'is_likely_rls_limited': isLikelyRlsLimited,
+      'warnings': snapshotWarnings,
+      'errors': tableErrors,
+      'counts': <String, dynamic>{
+        'users': users.length,
+        'user_favorite_colors': favoriteColors.length,
+        'user_occasions': occasions.length,
+        'clothing_items': clothingItems.length,
+        'saved_outfits': savedOutfits.length,
+        'outfit_items': outfitItems.length,
+        'wear_history': wearHistory.length,
+        'wardrobe_stats': wardrobeStats.length,
+        'favorite_clothing_items': favoriteClothingCount,
+        'favorite_outfits': favoriteOutfitsCount,
+        'users_with_wardrobe': usersWithWardrobe.length,
+        'users_with_outfits': usersWithOutfits.length,
+        'users_with_wear_history': usersWithWearHistory.length,
+        'top_category':
+            sortedCategoryEntries.isEmpty ? null : sortedCategoryEntries.first.key,
+        'top_category_count': sortedCategoryEntries.isEmpty
+            ? 0
+            : sortedCategoryEntries.first.value,
+      },
+      'top_categories': sortedCategoryCounts,
+      'tables': <String, dynamic>{
+        'users': users,
+        'user_favorite_colors': favoriteColors,
+        'user_occasions': occasions,
+        'clothing_items': clothingItems,
+        'saved_outfits': savedOutfits,
+        'outfit_items': outfitItems,
+        'wear_history': wearHistory,
+        'wardrobe_stats': wardrobeStats,
+      },
+      'users_by_id': usersById,
+    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────

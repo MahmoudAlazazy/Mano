@@ -1,5 +1,6 @@
 param(
-  [int]$ApiPort = 8000
+  [int]$ApiPort = 8000,
+  [string]$AppClothingApiBaseUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,7 +22,11 @@ Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList @(
 Write-Host "[dev-stack] running flutter app with local clothing api..."
 Push-Location $root
 try {
-  flutter run --dart-define=CLOTHING_IMAGE_API_BASE_URL=http://10.0.2.2:$ApiPort
+  $apiBase = $AppClothingApiBaseUrl
+  if ([string]::IsNullOrWhiteSpace($apiBase)) {
+    $apiBase = "http://10.0.2.2:$ApiPort"
+  }
+  flutter run --dart-define=CLOTHING_IMAGE_API_BASE_URL=$apiBase
 }
 finally {
   Pop-Location

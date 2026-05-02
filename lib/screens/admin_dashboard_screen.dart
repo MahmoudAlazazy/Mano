@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import '../providers/supabase_provider.dart';
 import '../services/admin_access_service.dart';
 import '../services/admin_api_service.dart';
+import '../services/clothing_image_service.dart';
+import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -25,6 +27,8 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final AdminApiService _api = AdminApiService();
+  final ClothingImageService _clothingImageService = ClothingImageService();
+  final SupabaseService _supabase = SupabaseService();
   final ImagePicker _picker = ImagePicker();
 
   final TextEditingController _countCtrl =
@@ -38,6 +42,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isRefreshingDashboard = false;
   bool _isCreatingAccounts = false;
   bool _isGenerating = false;
+  bool _isCheckingClothingSearch = false;
   bool _useImagesField = false;
   bool _showDebugConsole = true;
 
@@ -49,7 +54,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final List<String> _operationErrors = <String>[];
 
   ApiConnectionStatus? _apiStatus;
+  ClothingImageHealthStatus? _clothingImageStatus;
   AdminApiResult? _lastResult;
+  Map<String, dynamic>? _systemSnapshot;
+  String? _systemSnapshotError;
 
   @override
   void initState() {
@@ -86,17 +94,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> _refreshDashboard() async {
     final auth = context.read<AuthProvider>();
     final userId = auth.user?.id;
+    final profileProvider = context.read<ProfileProvider>();
+    final wardrobeProvider = context.read<WardrobeProvider>();
+    final outfitProvider = context.read<OutfitProvider>();
+    final statsProvider = context.read<StatsProvider>();
 
     setState(() => _isRefreshingDashboard = true);
 
-    final apiStatus = await _api.checkConnection();
+    final apiStatusFuture = _api.checkConnection();
+    final clothingStatusFuture = _clothingImageService.checkHealth();
+    final systemSnapshotFuture = _supabase.getAdminSystemSnapshot();
+
+    final apiStatus = await apiStatusFuture;
+    final clothingStatus = await clothingStatusFuture;
+
+    Map<String, dynamic>? systemSnapshot;
+    String? systemSnapshotError;
+    try {
+      systemSnapshot = await systemSnapshotFuture;
+    } catch (e) {
+      systemSnapshotError = e.toString();
+    }
 
     if (userId != null) {
       await Future.wait([
-        context.read<ProfileProvider>().loadProfile(userId),
-        context.read<WardrobeProvider>().loadWardrobe(userId),
-        context.read<OutfitProvider>().loadOutfits(userId),
-        context.read<StatsProvider>().loadStats(userId),
+        profileProvider.loadProfile(userId),
+        wardrobeProvider.loadWardrobe(userId),
+        outfitProvider.loadOutfits(userId),
+        statsProvider.loadStats(userId),
       ]);
     }
 
@@ -104,12 +129,47 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     setState(() {
       _apiStatus = apiStatus;
+      _clothingImageStatus = clothingStatus;
+      _systemSnapshot = systemSnapshot;
+      _systemSnapshotError = systemSnapshotError;
       _lastRefreshAt = DateTime.now();
       _isRefreshingDashboard = false;
+      final hasSnapshot = systemSnapshot != null;
+      final tableErrors =
+          (systemSnapshot?['errors'] as Map<dynamic, dynamic>?) ?? const {};
+      final accessScope = systemSnapshot?['access_scope']?.toString() ?? 'unknown';
+      final snapshotState = !hasSnapshot
+          ? 'without system snapshot'
+          : tableErrors.isNotEmpty
+              ? 'with partial snapshot (${tableErrors.length} table errors)'
+              : accessScope == 'system_scoped'
+              ? 'with full system snapshot'
+              : 'with $accessScope snapshot';
       _opsSummary = userId == null
-          ? 'Dashboard refreshed in local admin mode at ${_formatTime(_lastRefreshAt!)}'
-          : 'Dashboard refreshed at ${_formatTime(_lastRefreshAt!)}';
+          ? 'Dashboard refreshed in local admin mode $snapshotState at ${_formatTime(_lastRefreshAt!)}'
+          : 'Dashboard refreshed $snapshotState at ${_formatTime(_lastRefreshAt!)}';
     });
+  }
+
+  Future<void> _checkClothingImageSearch() async {
+    setState(() => _isCheckingClothingSearch = true);
+
+    final status = await _clothingImageService.checkHealth();
+
+    if (!mounted) return;
+    setState(() {
+      _clothingImageStatus = status;
+      _isCheckingClothingSearch = false;
+      _opsSummary = status.isHealthy
+          ? 'Clothing image search healthy at ${_formatTime(status.checkedAt)}'
+          : 'Clothing image search issue at ${_formatTime(status.checkedAt)}';
+    });
+
+    _showSnack(
+      status.isHealthy
+          ? 'Clothing image search is healthy'
+          : 'Clothing image search has an issue',
+    );
   }
 
   Future<void> _pickAvatar() async {
@@ -264,6 +324,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return '$h:$m:$s';
   }
 
+  String _formatClothingStatusValue() {
+    final status = _clothingImageStatus;
+    if (status == null) return 'Not checked yet';
+    if (status.isHealthy) {
+      return 'Healthy (${status.searchEngine ?? '-'})';
+    }
+    return 'Problem detected';
+  }
+
+  String? _formatClothingStatusDetail() {
+    final status = _clothingImageStatus;
+    if (status == null) return null;
+    if (status.isHealthy) {
+      return '${status.resultCount} URLs, ${status.sampleBytes ?? 0} bytes, ${status.duration.inMilliseconds}ms';
+    }
+    return status.error ?? 'Search or download check failed';
+  }
+
   String _metricValue(
     Map<String, dynamic>? stats,
     List<String> candidates,
@@ -278,6 +356,64 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return fallback;
   }
 
+  Map<String, dynamic> _snapshotCounts() {
+    final counts = _systemSnapshot?['counts'];
+    if (counts is Map) {
+      return Map<String, dynamic>.from(counts);
+    }
+    return const <String, dynamic>{};
+  }
+
+  String _snapshotCount(String key, {String fallback = '-'}) {
+    final counts = _snapshotCounts();
+    final value = counts[key];
+    if (value == null) return fallback;
+    return value.toString();
+  }
+
+  String _topCategoriesPreview() {
+    final top = _systemSnapshot?['top_categories'];
+    if (top is! Map || top.isEmpty) return '-';
+    final entries = top.entries.take(3).map((entry) => '${entry.key}:${entry.value}');
+    return entries.join(' | ');
+  }
+
+  String _snapshotStatusValue() {
+    if (_systemSnapshotError != null && _systemSnapshotError!.trim().isNotEmpty) {
+      return 'Failed';
+    }
+    if (_systemSnapshot == null) return 'Not loaded';
+    final scope = _systemSnapshot?['access_scope']?.toString() ?? 'unknown';
+    switch (scope) {
+      case 'system_scoped':
+        return 'System scoped';
+      case 'user_scoped':
+        return 'User scoped (not full system)';
+      case 'anonymous':
+        return 'Anonymous (limited)';
+      default:
+        return 'Unknown scope';
+    }
+  }
+
+  String? _snapshotStatusDetail() {
+    if (_systemSnapshotError != null && _systemSnapshotError!.trim().isNotEmpty) {
+      return _systemSnapshotError;
+    }
+    final generatedAt = _systemSnapshot?['generated_at']?.toString();
+    final warnings = _systemSnapshot?['warnings'];
+    if (warnings is List && warnings.isNotEmpty) {
+      return warnings.first.toString();
+    }
+    final errors = _systemSnapshot?['errors'];
+    final hasErrors = errors is Map && errors.isNotEmpty;
+    if (hasErrors) {
+      return '${errors.length} table errors (check Debug Console)';
+    }
+    if (generatedAt == null || generatedAt.isEmpty) return null;
+    return 'Generated at $generatedAt';
+  }
+
   List<String> _providerErrors({
     required AuthProvider auth,
     required ProfileProvider profile,
@@ -288,6 +424,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final apiSummary = (_apiStatus?.isConnected ?? false)
         ? null
         : 'API unreachable. Open Debug Console for the full connection trace.';
+    final clothingSummary = (_clothingImageStatus == null ||
+            _clothingImageStatus!.isHealthy)
+        ? null
+        : 'Clothing image search: ${_clothingImageStatus!.error ?? 'check failed'}';
+    final snapshotErrors = _systemSnapshot?['errors'];
+    final snapshotSummary = (snapshotErrors is Map && snapshotErrors.isNotEmpty)
+        ? 'System snapshot has ${snapshotErrors.length} table errors (Debug Console has details).'
+        : null;
 
     final errors = <String>[
       if (auth.error != null && auth.error!.trim().isNotEmpty)
@@ -300,7 +444,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         'Outfit: ${outfit.error!}',
       if (stats.error != null && stats.error!.trim().isNotEmpty)
         'Stats: ${stats.error!}',
+      if (_systemSnapshotError != null && _systemSnapshotError!.trim().isNotEmpty)
+        'System snapshot: ${_systemSnapshotError!}',
       ?apiSummary,
+      ?clothingSummary,
+      ?snapshotSummary,
       ..._operationErrors,
     ];
     return errors.toSet().toList();
@@ -356,6 +504,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         'least_worn_count': stats.leastWornItems.length,
         'least_worn_items': stats.leastWornItems.take(3).toList(),
       },
+      'system_snapshot': <String, dynamic>{
+        'error': _systemSnapshotError,
+        'is_loaded': _systemSnapshot != null,
+        'is_authenticated': _systemSnapshot?['is_authenticated'],
+        'access_scope': _systemSnapshot?['access_scope'],
+        'has_full_access': _systemSnapshot?['has_full_access'],
+        'is_likely_rls_limited': _systemSnapshot?['is_likely_rls_limited'],
+        'warnings': _systemSnapshot?['warnings'],
+        'counts': _systemSnapshot?['counts'],
+        'top_categories': _systemSnapshot?['top_categories'],
+        'table_errors': _systemSnapshot?['errors'],
+      },
     };
   }
 
@@ -370,6 +530,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         'endpoint': _apiStatus?.endpoint,
         'checked_at': _apiStatus?.checkedAt?.toIso8601String(),
         'error': _apiStatus?.error,
+      },
+      'clothing_image_search': <String, dynamic>{
+        'mode': 'internal_dart',
+        'status': _clothingImageStatus?.toMap(),
       },
       'connection_trace': _api.lastConnectionTrace
           .map((attempt) => attempt.toMap())
@@ -454,6 +618,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               title: 'Provider State',
               body: _prettyJson(providerDebug),
             ),
+            const SizedBox(height: AppSpacing.sm),
+            _DebugBlock(
+              title: 'System Snapshot (All Users)',
+              body: _prettyJson(
+                _systemSnapshot ?? <String, dynamic>{'error': _systemSnapshotError ?? 'not loaded'},
+              ),
+            ),
           ],
         ),
       ),
@@ -471,6 +642,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final user = auth.user;
     final adminEmail = widget.localAdminEmail ?? user?.email;
     final profile = profileProvider.profile;
+    final snapshotCounts = _snapshotCounts();
+    final snapshotScope = _systemSnapshot?['access_scope']?.toString();
+    final snapshotWarningsRaw = _systemSnapshot?['warnings'];
+    final snapshotWarnings = snapshotWarningsRaw is List
+        ? snapshotWarningsRaw.map((e) => e.toString()).toList()
+        : const <String>[];
+    final isSystemScoped = snapshotScope == 'system_scoped';
+    final isDataScopeLimited =
+        !auth.isAuthenticated || snapshotScope != 'system_scoped';
+    final activeProviderLoads = <bool>[
+      profileProvider.isLoading,
+      wardrobeProvider.isLoading,
+      outfitProvider.isLoading,
+      statsProvider.isLoading,
+    ].where((isLoading) => isLoading).length;
+    final providerLoadDetails =
+        'Profile:${profileProvider.isLoading ? 'loading' : 'ready'} | '
+        'Wardrobe:${wardrobeProvider.isLoading ? 'loading' : 'ready'} | '
+        'Outfit:${outfitProvider.isLoading ? 'loading' : 'ready'} | '
+        'Stats:${statsProvider.isLoading ? 'loading' : 'ready'}';
     final allErrors = _providerErrors(
       auth: auth,
       profile: profileProvider,
@@ -534,6 +725,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: AppSpacing.sm),
+            if (isDataScopeLimited)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(
+                    color: AppColors.warning.withValues(alpha: 0.45),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      color: AppColors.warning,
+                      size: 18,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        snapshotWarnings.isNotEmpty
+                            ? snapshotWarnings.first
+                            : 'Dashboard is not system-scoped yet. Current data may be empty or user-limited.',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             _StatusCard(title: 'Admin Email', value: adminEmail ?? '-'),
             _StatusCard(title: 'User ID', value: _short(user?.id)),
             _StatusCard(
@@ -556,20 +779,46 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       .trim(),
             ),
             _StatusCard(
+              title: 'Clothes Image Search',
+              value: _formatClothingStatusValue(),
+              subValue: _formatClothingStatusDetail(),
+            ),
+            _StatusCard(
+              title: 'System Snapshot',
+              value: _snapshotStatusValue(),
+              subValue: _snapshotStatusDetail(),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isCheckingClothingSearch
+                    ? null
+                    : _checkClothingImageSearch,
+                icon: _isCheckingClothingSearch
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.image_search_rounded),
+                label: Text(
+                  _isCheckingClothingSearch
+                      ? 'Checking clothing search...'
+                      : 'Check Clothing Image Search',
+                ),
+              ),
+            ),
+            _StatusCard(
               title: 'Last Refresh',
               value: _lastRefreshAt == null ? '-' : _formatTime(_lastRefreshAt!),
               subValue: _isRefreshingDashboard ? 'Refreshing now...' : null,
             ),
             _StatusCard(
               title: 'Provider Loads',
-              value: (profileProvider.isLoading ||
-                      wardrobeProvider.isLoading ||
-                      outfitProvider.isLoading ||
-                      statsProvider.isLoading)
-                  ? 'Loading'
-                  : 'Idle',
-              subValue:
-                  'Profile:${profileProvider.isLoading} Wardrobe:${wardrobeProvider.isLoading} Outfit:${outfitProvider.isLoading} Stats:${statsProvider.isLoading}',
+              value: activeProviderLoads > 0
+                  ? '$activeProviderLoads active request(s)'
+                  : 'No active requests',
+              subValue: providerLoadDetails,
             ),
             const SizedBox(height: AppSpacing.lg),
 
@@ -579,37 +828,91 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             const SizedBox(height: AppSpacing.sm),
             _StatusCard(
-              title: 'Current User Profile',
-              value: profile == null ? 'Missing' : profile.name,
+              title: 'Metrics Scope',
+              value: isSystemScoped ? 'Global system data' : 'Limited scope',
+              subValue: isSystemScoped
+                  ? 'You are seeing all users data.'
+                  : 'Global metrics are unavailable in current session scope.',
             ),
-            _StatusCard(
-              title: 'Wardrobe Items',
-              value: wardrobeProvider.items.length.toString(),
-            ),
-            _StatusCard(
-              title: 'Saved Outfits',
-              value: outfitProvider.outfits.length.toString(),
-            ),
-            _StatusCard(
-              title: 'Least Worn Tracked',
-              value: statsProvider.leastWornItems.length.toString(),
-            ),
-            _StatusCard(
-              title: 'Total Wear Events',
-              value: _metricValue(
-                statsProvider.stats,
-                const ['total_wears', 'wear_events', 'total_wear_events'],
-                '-',
+            if (isSystemScoped) ...[
+              _StatusCard(
+                title: 'Total Users',
+                value: _snapshotCount('users'),
               ),
-            ),
-            _StatusCard(
-              title: 'Most Worn Category',
-              value: _metricValue(
-                statsProvider.stats,
-                const ['most_worn_category', 'top_category'],
-                '-',
+              _StatusCard(
+                title: 'Users With Wardrobe',
+                value: _snapshotCount('users_with_wardrobe'),
               ),
-            ),
+              _StatusCard(
+                title: 'Users With Outfits',
+                value: _snapshotCount('users_with_outfits'),
+              ),
+              _StatusCard(
+                title: 'Users With Wear History',
+                value: _snapshotCount('users_with_wear_history'),
+              ),
+              _StatusCard(
+                title: 'Clothing Items (Global)',
+                value: _snapshotCount('clothing_items'),
+              ),
+              _StatusCard(
+                title: 'Saved Outfits (Global)',
+                value: _snapshotCount('saved_outfits'),
+              ),
+              _StatusCard(
+                title: 'Outfit Items Links',
+                value: _snapshotCount('outfit_items'),
+              ),
+              _StatusCard(
+                title: 'Wear Events (Global)',
+                value: _snapshotCount('wear_history'),
+              ),
+              _StatusCard(
+                title: 'Favorite Clothing Items',
+                value: _snapshotCount('favorite_clothing_items'),
+              ),
+              _StatusCard(
+                title: 'Favorite Outfits',
+                value: _snapshotCount('favorite_outfits'),
+              ),
+              _StatusCard(
+                title: 'Most Worn Category (Global)',
+                value: snapshotCounts['top_category']?.toString() ?? '-',
+                subValue: 'Count: ${snapshotCounts['top_category_count'] ?? '-'}',
+              ),
+              _StatusCard(
+                title: 'Top Categories',
+                value: _topCategoriesPreview(),
+              ),
+            ] else ...[
+              _StatusCard(
+                title: 'Current Session Profile',
+                value: profile == null ? 'Missing' : profile.name,
+              ),
+              _StatusCard(
+                title: 'Session Wardrobe Items',
+                value: wardrobeProvider.items.length.toString(),
+              ),
+              _StatusCard(
+                title: 'Session Saved Outfits',
+                value: outfitProvider.outfits.length.toString(),
+              ),
+              _StatusCard(
+                title: 'Session Wear Events',
+                value: _metricValue(
+                  statsProvider.stats,
+                  const ['total_wears', 'wear_events', 'total_wear_events'],
+                  '0',
+                ),
+              ),
+              _StatusCard(
+                title: 'Global Metrics',
+                value: 'Locked by RLS scope',
+                subValue: snapshotWarnings.isNotEmpty
+                    ? snapshotWarnings.first
+                    : 'Sign in with an account that has system-scoped policy access.',
+              ),
+            ],
             const SizedBox(height: AppSpacing.lg),
 
             const Text(

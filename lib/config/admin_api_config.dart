@@ -13,11 +13,11 @@ class AdminApiConfig {
 
   static const String _timeoutSeconds = String.fromEnvironment(
     'ADMIN_API_TIMEOUT_SECONDS',
-    defaultValue: '60',
+    defaultValue: '180',
   );
 
   static Duration get timeout {
-    final seconds = int.tryParse(_timeoutSeconds) ?? 60;
+    final seconds = int.tryParse(_timeoutSeconds) ?? 180;
     return Duration(seconds: seconds < 5 ? 5 : seconds);
   }
 

@@ -108,7 +108,22 @@ class _LoginScreenState extends State<LoginScreen>
 
     final email = _emailCtrl.text.trim();
     final passwordRaw = _passwordCtrl.text;
+    final authProvider = context.read<AuthProvider>();
+
     if (_isLocalAdminCredentials(email: email, password: passwordRaw)) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
+      final authOk = await authProvider.signIn(
+        email: email,
+        password: passwordRaw.trim(),
+      );
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -119,15 +134,18 @@ class _LoginScreenState extends State<LoginScreen>
         ),
       );
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Admin login successful'),
-          backgroundColor: Colors.green,
+        SnackBar(
+          content: Text(
+            authOk
+                ? 'Admin login successful'
+                : 'Admin local mode only: Supabase auth failed, data may be limited',
+          ),
+          backgroundColor: authOk ? Colors.green : AppColors.warning,
         ),
       );
       return;
     }
 
-    final authProvider = context.read<AuthProvider>();
     if (authProvider.remainingWaitSeconds > 0) {
       _showError('Rate limited. Wait ${authProvider.remainingWaitSeconds}s');
       return;

@@ -53,6 +53,7 @@ class OutfitSuggestionService {
     required List<Map<String, dynamic>> wardrobeItems,
     required String governorate,
     required double temperatureC,
+    String audience = 'men',
   }) async {
     final wardrobe = _WardrobeIndex.fromRaw(wardrobeItems);
     try {
@@ -61,6 +62,7 @@ class OutfitSuggestionService {
         occasion: occasion,
         governorate: governorate,
         temperatureC: temperatureC,
+        audience: audience,
         wardrobe: wardrobe,
       );
 
@@ -97,10 +99,19 @@ class OutfitSuggestionService {
         mode: mode,
         parsedItems: parsedItems,
         wardrobe: wardrobe,
+        audience: audience,
+        occasion: occasion,
+        temperatureC: temperatureC,
       );
 
       if (resolvedItems.isEmpty) {
-        resolvedItems = _fallbackItems(mode: mode, wardrobe: wardrobe);
+        resolvedItems = _fallbackItems(
+          mode: mode,
+          wardrobe: wardrobe,
+          audience: audience,
+          occasion: occasion,
+          temperatureC: temperatureC,
+        );
       }
 
       final selectedIds = <String>{
@@ -130,7 +141,13 @@ class OutfitSuggestionService {
         name: 'OutfitSuggestionService',
         stackTrace: stackTrace,
       );
-      return _buildSafeFallbackSuggestion(mode: mode, wardrobe: wardrobe);
+      return _buildSafeFallbackSuggestion(
+        mode: mode,
+        wardrobe: wardrobe,
+        audience: audience,
+        occasion: occasion,
+        temperatureC: temperatureC,
+      );
     }
   }
 
@@ -181,6 +198,7 @@ class OutfitSuggestionService {
     required String occasion,
     required String governorate,
     required double temperatureC,
+    required String audience,
     required _WardrobeIndex wardrobe,
   }) {
     final weatherBand = temperatureC >= 28
@@ -205,6 +223,7 @@ You are a fashion stylist. Return STRICT JSON only (no markdown, no explanation)
 
 Mode: $mode
 Occasion: $occasion
+Target audience: ${audience.toLowerCase().contains('women') ? "women's clothing" : "men's clothing"}
 Location (Governorate): $governorate
 Temperature (C): ${temperatureC.toStringAsFixed(1)}
 Weather band: $weatherBand
@@ -232,14 +251,22 @@ Output schema:
 Rules:
 - Total items must be exactly 4.
 - Categories: Tops, Bottoms, Shoes, Jackets, Dresses, Accessories.
+- The 4 items must form one cohesive outfit that can be worn together.
+- Use one clear palette and compatible formality. Avoid mixing formal shoes with athletic clothes, or dresses with separate bottoms.
+- Use one of these outfit structures:
+  - Top + Bottom + Shoes + Jacket/Accessory.
+  - Dress + Shoes + Jacket/Accessory + Accessory.
+  - Sport top + Sport bottom + Sport shoes + Sport layer/accessory.
 - If Mode is "Use My Wardrobe":
   - Prefer ONLY wardrobe items.
   - Always include wardrobe_id when using wardrobe source.
 - If Mode is "Mix & Match":
   - Include exactly 2 wardrobe items (source=wardrobe, with wardrobe_id).
   - Include exactly 2 missing suggestions (source=ai, wardrobe_id=null).
+  - The 2 AI suggestions must complete the wardrobe pieces into one wearable outfit.
 - If Mode is "Full Outfit Suggestion":
   - Use source=ai only.
+  - Return a complete outfit, not four unrelated product ideas.
 - For wardrobe items, use exact IDs from the provided list.
 - For AI items, include:
   - image_name: short searchable phrase that will be sent directly as the `name` query parameter to this endpoint:
@@ -247,11 +274,12 @@ Rules:
   - image_type: short type that will be sent directly as the `type` query parameter.
   - image_index: integer (usually 0)
   - Keep image_name plain text only, short, searchable, and product-like.
+  - image_name must match the target audience. Use women/female terms only for women's clothing and men/male terms only for men's clothing.
   - Do not return sentences in image_name.
 Examples of valid AI search fields:
-  - image_name="nike hoodie", image_type="hoodie"
-  - image_name="adidas running shoes", image_type="shoes"
-  - image_name="levis 501", image_type="jeans"
+  - image_name="men nike hoodie", image_type="hoodie"
+  - image_name="women linen blouse", image_type="blouse"
+  - image_name="men adidas running shoes", image_type="shoes"
 ''';
   }
 
@@ -378,6 +406,9 @@ Weather rules:
     required String mode,
     required List<_RawSuggestionItem> parsedItems,
     required _WardrobeIndex wardrobe,
+    required String audience,
+    required String occasion,
+    required double temperatureC,
   }) {
     final modeLower = mode.toLowerCase();
     final isWardrobeMode = modeLower.contains('use my wardrobe');
@@ -449,12 +480,18 @@ Weather rules:
       items: resolved,
       wardrobe: wardrobe,
       usedWardrobeIds: usedWardrobeIds,
+      audience: audience,
+      occasion: occasion,
+      temperatureC: temperatureC,
     );
     final exactFour = _ensureExactlyFourItems(
       mode: mode,
       items: enforced,
       wardrobe: wardrobe,
       usedWardrobeIds: usedWardrobeIds,
+      audience: audience,
+      occasion: occasion,
+      temperatureC: temperatureC,
     );
 
     if (isFullMode) {
@@ -482,6 +519,9 @@ Weather rules:
     required List<OutfitItem> items,
     required _WardrobeIndex wardrobe,
     required Set<String> usedWardrobeIds,
+    required String audience,
+    required String occasion,
+    required double temperatureC,
   }) {
     final modeLower = mode.toLowerCase();
     final isWardrobeMode = modeLower.contains('use my wardrobe');
@@ -555,7 +595,9 @@ Weather rules:
             emoji: '\u{1F9E5}',
             source: 'ai',
             wardrobeId: null,
-            imageName: 'light jacket',
+            imageName: _isWomenAudience(audience)
+                ? 'soft blazer'
+                : 'light jacket',
             imageType: 'jacket',
             imageIndex: 0,
           ),
@@ -564,7 +606,15 @@ Weather rules:
       }
 
       if (out.length < 4) {
-        out.addAll(_fallbackItems(mode: mode, wardrobe: wardrobe));
+        out.addAll(
+          _fallbackItems(
+            mode: mode,
+            wardrobe: wardrobe,
+            audience: audience,
+            occasion: occasion,
+            temperatureC: temperatureC,
+          ),
+        );
       }
 
       if (out.length > 4) {
@@ -575,7 +625,13 @@ Weather rules:
     }
 
     if (out.isEmpty) {
-      return _fallbackItems(mode: mode, wardrobe: wardrobe);
+      return _fallbackItems(
+        mode: mode,
+        wardrobe: wardrobe,
+        audience: audience,
+        occasion: occasion,
+        temperatureC: temperatureC,
+      );
     }
 
     if (out.length > 4) {
@@ -590,6 +646,9 @@ Weather rules:
     required List<OutfitItem> items,
     required _WardrobeIndex wardrobe,
     required Set<String> usedWardrobeIds,
+    required String audience,
+    required String occasion,
+    required double temperatureC,
   }) {
     var out = List<OutfitItem>.from(items);
     if (out.length >= 4) return out.take(4).toList();
@@ -602,23 +661,30 @@ Weather rules:
       ..._fallbackItems(
         mode: 'Full Outfit Suggestion',
         wardrobe: wardrobe,
+        audience: audience,
+        occasion: occasion,
+        temperatureC: temperatureC,
       ).where((e) => e.source == 'ai'),
-      const OutfitItem(
-        name: 'Layered Jacket',
+      OutfitItem(
+        name: _isWomenAudience(audience) ? 'Soft Blazer' : 'Layered Jacket',
         category: 'Jackets',
         emoji: '\u{1F9E5}',
         source: 'ai',
-        imageName: 'lightweight jacket',
+        imageName: _isWomenAudience(audience)
+            ? 'soft blazer'
+            : 'lightweight jacket',
         imageType: 'jacket',
         imageIndex: 0,
       ),
-      const OutfitItem(
-        name: 'Minimal Watch',
+      OutfitItem(
+        name: _isWomenAudience(audience) ? 'Leather Tote' : 'Minimal Watch',
         category: 'Accessories',
-        emoji: '\u{231A}',
+        emoji: _isWomenAudience(audience) ? '\u{1F45C}' : '\u{231A}',
         source: 'ai',
-        imageName: 'minimal wrist watch',
-        imageType: 'watch',
+        imageName: _isWomenAudience(audience)
+            ? 'leather tote bag'
+            : 'minimal wrist watch',
+        imageType: _isWomenAudience(audience) ? 'bag' : 'watch',
         imageIndex: 0,
       ),
     ];
@@ -653,12 +719,12 @@ Weather rules:
       }
 
       out.add(
-        const OutfitItem(
-          name: 'Essential Piece',
+        OutfitItem(
+          name: _isWomenAudience(audience) ? 'Essential Blouse' : 'Essential Piece',
           category: 'Tops',
-          emoji: '\u{1F455}',
+          emoji: _isWomenAudience(audience) ? '\u{1F45A}' : '\u{1F455}',
           source: 'ai',
-          imageName: 'basic top',
+          imageName: _isWomenAudience(audience) ? 'basic blouse' : 'basic top',
           imageType: 'top',
           imageIndex: 0,
         ),
@@ -793,13 +859,18 @@ Weather rules:
     if (c.contains('bottom') ||
         c.contains('pant') ||
         c.contains('jean') ||
-        c.contains('short')) {
+        c.contains('short') ||
+        c.contains('skirt') ||
+        c.contains('legging')) {
       return 'bottoms';
     }
     if (c.contains('shoe') ||
         c.contains('sneaker') ||
         c.contains('boot') ||
-        c.contains('loafer')) {
+        c.contains('loafer') ||
+        c.contains('heel') ||
+        c.contains('flat') ||
+        c.contains('sandal')) {
       return 'shoes';
     }
     if (c.contains('jacket') ||
@@ -814,7 +885,9 @@ Weather rules:
     if (c.contains('acc') ||
         c.contains('watch') ||
         c.contains('cap') ||
-        c.contains('bag')) {
+        c.contains('bag') ||
+        c.contains('tote') ||
+        c.contains('clutch')) {
       return 'accessories';
     }
     return '';
@@ -902,8 +975,17 @@ Weather rules:
   OutfitSuggestion _buildSafeFallbackSuggestion({
     required String mode,
     required _WardrobeIndex wardrobe,
+    required String audience,
+    required String occasion,
+    required double temperatureC,
   }) {
-    final items = _fallbackItems(mode: mode, wardrobe: wardrobe);
+    final items = _fallbackItems(
+      mode: mode,
+      wardrobe: wardrobe,
+      audience: audience,
+      occasion: occasion,
+      temperatureC: temperatureC,
+    );
     final selectedIds = items
         .where((item) => item.wardrobeId != null && item.wardrobeId!.isNotEmpty)
         .map((item) => item.wardrobeId!)
@@ -913,13 +995,782 @@ Weather rules:
     return OutfitSuggestion(items: items, suggestedWardrobeIds: selectedIds);
   }
 
+  bool _isWomenAudience(String audience) {
+    final value = audience.toLowerCase();
+    return value.contains('women') ||
+        value.contains('female') ||
+        value.contains('girl');
+  }
+
+  String _fallbackOccasionKey(String occasion) {
+    final value = occasion.toLowerCase();
+    if (value.contains('formal')) return 'formal';
+    if (value.contains('business')) return 'business';
+    if (value.contains('sport')) return 'sport';
+    return 'casual';
+  }
+
+  String _fallbackWeatherBand(double temperatureC) {
+    if (temperatureC >= 28) return 'hot';
+    if (temperatureC <= 18) return 'cold';
+    return 'mild';
+  }
+
+  List<OutfitItem> _cohesiveAiFallbackItems({
+    required String audience,
+    required String occasion,
+    required double temperatureC,
+  }) {
+    final isWomen = _isWomenAudience(audience);
+    final occ = _fallbackOccasionKey(occasion);
+    final band = _fallbackWeatherBand(temperatureC);
+
+    if (isWomen) {
+      if (occ == 'formal') {
+        if (band == 'cold') {
+          return const [
+            OutfitItem(
+              name: 'Knit Dress',
+              category: 'Dresses',
+              emoji: '\u{1F457}',
+              source: 'ai',
+              imageName: 'black knit turtleneck dress',
+              imageType: 'dress',
+              imageIndex: 0,
+            ),
+            OutfitItem(
+              name: 'Ankle Boots',
+              category: 'Shoes',
+              emoji: '\u{1F97E}',
+              source: 'ai',
+              imageName: 'black leather ankle boots',
+              imageType: 'boots',
+              imageIndex: 0,
+            ),
+            OutfitItem(
+              name: 'Wool Coat',
+              category: 'Jackets',
+              emoji: '\u{1F9E5}',
+              source: 'ai',
+              imageName: 'camel tailored wool coat',
+              imageType: 'coat',
+              imageIndex: 0,
+            ),
+            OutfitItem(
+              name: 'Handbag',
+              category: 'Accessories',
+              emoji: '\u{1F45C}',
+              source: 'ai',
+              imageName: 'black structured handbag',
+              imageType: 'bag',
+              imageIndex: 0,
+            ),
+          ];
+        }
+        return const [
+          OutfitItem(
+            name: 'Satin Midi Dress',
+            category: 'Dresses',
+            emoji: '\u{1F457}',
+            source: 'ai',
+            imageName: 'champagne satin midi dress',
+            imageType: 'dress',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Block Heels',
+            category: 'Shoes',
+            emoji: '\u{1F460}',
+            source: 'ai',
+            imageName: 'nude strappy block heels',
+            imageType: 'heels',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Cream Blazer',
+            category: 'Jackets',
+            emoji: '\u{1F9E5}',
+            source: 'ai',
+            imageName: 'cream formal blazer',
+            imageType: 'blazer',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Clutch Bag',
+            category: 'Accessories',
+            emoji: '\u{1F45C}',
+            source: 'ai',
+            imageName: 'champagne clutch bag',
+            imageType: 'bag',
+            imageIndex: 0,
+          ),
+        ];
+      }
+
+      if (occ == 'business') {
+        if (band == 'cold') {
+          return const [
+            OutfitItem(
+              name: 'Turtleneck Sweater',
+              category: 'Tops',
+              emoji: '\u{1F9E5}',
+              source: 'ai',
+              imageName: 'cream ribbed turtleneck sweater',
+              imageType: 'sweater',
+              imageIndex: 0,
+            ),
+            OutfitItem(
+              name: 'Wool Trousers',
+              category: 'Bottoms',
+              emoji: '\u{1F456}',
+              source: 'ai',
+              imageName: 'charcoal wool tailored trousers',
+              imageType: 'trousers',
+              imageIndex: 0,
+            ),
+            OutfitItem(
+              name: 'Ankle Boots',
+              category: 'Shoes',
+              emoji: '\u{1F97E}',
+              source: 'ai',
+              imageName: 'black leather ankle boots',
+              imageType: 'boots',
+              imageIndex: 0,
+            ),
+            OutfitItem(
+              name: 'Belted Coat',
+              category: 'Jackets',
+              emoji: '\u{1F9E5}',
+              source: 'ai',
+              imageName: 'camel belted wool coat',
+              imageType: 'coat',
+              imageIndex: 0,
+            ),
+          ];
+        }
+        return const [
+          OutfitItem(
+            name: 'Button Blouse',
+            category: 'Tops',
+            emoji: '\u{1F45A}',
+            source: 'ai',
+            imageName: 'white cotton button blouse',
+            imageType: 'blouse',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Wide Leg Trousers',
+            category: 'Bottoms',
+            emoji: '\u{1F456}',
+            source: 'ai',
+            imageName: 'beige tailored wide leg trousers',
+            imageType: 'trousers',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Pointed Flats',
+            category: 'Shoes',
+            emoji: '\u{1F97F}',
+            source: 'ai',
+            imageName: 'tan pointed flats',
+            imageType: 'flats',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Leather Tote',
+            category: 'Accessories',
+            emoji: '\u{1F45C}',
+            source: 'ai',
+            imageName: 'tan minimal leather tote',
+            imageType: 'bag',
+            imageIndex: 0,
+          ),
+        ];
+      }
+
+      if (occ == 'sport') {
+        if (band == 'cold') {
+          return const [
+            OutfitItem(
+              name: 'Thermal Top',
+              category: 'Tops',
+              emoji: '\u{1F9E5}',
+              source: 'ai',
+              imageName: 'black thermal training top',
+              imageType: 'top',
+              imageIndex: 0,
+            ),
+            OutfitItem(
+              name: 'Leggings',
+              category: 'Bottoms',
+              emoji: '\u{1F456}',
+              source: 'ai',
+              imageName: 'black high waist leggings',
+              imageType: 'leggings',
+              imageIndex: 0,
+            ),
+            OutfitItem(
+              name: 'Running Sneakers',
+              category: 'Shoes',
+              emoji: '\u{1F45F}',
+              source: 'ai',
+              imageName: 'white running sneakers',
+              imageType: 'sneakers',
+              imageIndex: 0,
+            ),
+            OutfitItem(
+              name: 'Training Jacket',
+              category: 'Jackets',
+              emoji: '\u{1F9E5}',
+              source: 'ai',
+              imageName: 'black training jacket',
+              imageType: 'jacket',
+              imageIndex: 0,
+            ),
+          ];
+        }
+        return const [
+          OutfitItem(
+            name: 'Training Tank',
+            category: 'Tops',
+            emoji: '\u{1F45A}',
+            source: 'ai',
+            imageName: 'white training tank top',
+            imageType: 'top',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Biker Shorts',
+            category: 'Bottoms',
+            emoji: '\u{1FA73}',
+            source: 'ai',
+            imageName: 'black biker shorts',
+            imageType: 'shorts',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Training Sneakers',
+            category: 'Shoes',
+            emoji: '\u{1F45F}',
+            source: 'ai',
+            imageName: 'white training sneakers',
+            imageType: 'sneakers',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Sports Cap',
+            category: 'Accessories',
+            emoji: '\u{1F9E2}',
+            source: 'ai',
+            imageName: 'black sports cap',
+            imageType: 'cap',
+            imageIndex: 0,
+          ),
+        ];
+      }
+
+      if (band == 'hot') {
+        return const [
+          OutfitItem(
+            name: 'Linen Blouse',
+            category: 'Tops',
+            emoji: '\u{1F45A}',
+            source: 'ai',
+            imageName: 'ivory linen sleeveless blouse',
+            imageType: 'blouse',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Summer Shorts',
+            category: 'Bottoms',
+            emoji: '\u{1FA73}',
+            source: 'ai',
+            imageName: 'beige high waisted summer shorts',
+            imageType: 'shorts',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Flat Sandals',
+            category: 'Shoes',
+            emoji: '\u{1F461}',
+            source: 'ai',
+            imageName: 'tan flat summer sandals',
+            imageType: 'sandals',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Straw Tote',
+            category: 'Accessories',
+            emoji: '\u{1F45C}',
+            source: 'ai',
+            imageName: 'straw tote bag',
+            imageType: 'bag',
+            imageIndex: 0,
+          ),
+        ];
+      }
+
+      if (band == 'cold') {
+        return const [
+          OutfitItem(
+            name: 'Knit Sweater',
+            category: 'Tops',
+            emoji: '\u{1F9E5}',
+            source: 'ai',
+            imageName: 'cream knit turtleneck sweater',
+            imageType: 'sweater',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Straight Jeans',
+            category: 'Bottoms',
+            emoji: '\u{1F456}',
+            source: 'ai',
+            imageName: 'dark straight leg jeans',
+            imageType: 'jeans',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Ankle Boots',
+            category: 'Shoes',
+            emoji: '\u{1F97E}',
+            source: 'ai',
+            imageName: 'black leather ankle boots',
+            imageType: 'boots',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Wrap Coat',
+            category: 'Jackets',
+            emoji: '\u{1F9E5}',
+            source: 'ai',
+            imageName: 'camel wool wrap coat',
+            imageType: 'coat',
+            imageIndex: 0,
+          ),
+        ];
+      }
+
+      return const [
+        OutfitItem(
+          name: 'Button Blouse',
+          category: 'Tops',
+          emoji: '\u{1F45A}',
+          source: 'ai',
+          imageName: 'white cotton button blouse',
+          imageType: 'blouse',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Wide Leg Trousers',
+          category: 'Bottoms',
+          emoji: '\u{1F456}',
+          source: 'ai',
+          imageName: 'sand wide leg trousers',
+          imageType: 'trousers',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Fashion Sneakers',
+          category: 'Shoes',
+          emoji: '\u{1F45F}',
+          source: 'ai',
+          imageName: 'white fashion sneakers',
+          imageType: 'sneakers',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Cardigan',
+          category: 'Jackets',
+          emoji: '\u{1F9E5}',
+          source: 'ai',
+          imageName: 'oatmeal cardigan sweater',
+          imageType: 'cardigan',
+          imageIndex: 0,
+        ),
+      ];
+    }
+
+    if (occ == 'formal') {
+      if (band == 'cold') {
+        return const [
+          OutfitItem(
+            name: 'Turtleneck',
+            category: 'Tops',
+            emoji: '\u{1F9E5}',
+            source: 'ai',
+            imageName: 'black formal turtleneck',
+            imageType: 'top',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Wool Trousers',
+            category: 'Bottoms',
+            emoji: '\u{1F456}',
+            source: 'ai',
+            imageName: 'charcoal wool trousers',
+            imageType: 'pants',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Chelsea Boots',
+            category: 'Shoes',
+            emoji: '\u{1F97E}',
+            source: 'ai',
+            imageName: 'black leather chelsea boots',
+            imageType: 'boots',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Wool Coat',
+            category: 'Jackets',
+            emoji: '\u{1F9E5}',
+            source: 'ai',
+            imageName: 'charcoal long wool coat',
+            imageType: 'coat',
+            imageIndex: 0,
+          ),
+        ];
+      }
+      return const [
+        OutfitItem(
+          name: 'Dress Shirt',
+          category: 'Tops',
+          emoji: '\u{1F454}',
+          source: 'ai',
+          imageName: 'white formal dress shirt',
+          imageType: 'shirt',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Tailored Pants',
+          category: 'Bottoms',
+          emoji: '\u{1F456}',
+          source: 'ai',
+          imageName: 'charcoal tailored pants',
+          imageType: 'pants',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Derby Shoes',
+          category: 'Shoes',
+          emoji: '\u{1F45E}',
+          source: 'ai',
+          imageName: 'black derby shoes',
+          imageType: 'shoes',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Navy Blazer',
+          category: 'Jackets',
+          emoji: '\u{1F9E5}',
+          source: 'ai',
+          imageName: 'navy formal blazer',
+          imageType: 'blazer',
+          imageIndex: 0,
+        ),
+      ];
+    }
+
+    if (occ == 'business') {
+      if (band == 'cold') {
+        return const [
+          OutfitItem(
+            name: 'Turtleneck',
+            category: 'Tops',
+            emoji: '\u{1F9E5}',
+            source: 'ai',
+            imageName: 'cream turtleneck sweater',
+            imageType: 'sweater',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Wool Trousers',
+            category: 'Bottoms',
+            emoji: '\u{1F456}',
+            source: 'ai',
+            imageName: 'charcoal wool trousers',
+            imageType: 'pants',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Chelsea Boots',
+            category: 'Shoes',
+            emoji: '\u{1F97E}',
+            source: 'ai',
+            imageName: 'black leather chelsea boots',
+            imageType: 'boots',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Wool Coat',
+            category: 'Jackets',
+            emoji: '\u{1F9E5}',
+            source: 'ai',
+            imageName: 'charcoal long wool coat',
+            imageType: 'coat',
+            imageIndex: 0,
+          ),
+        ];
+      }
+      return const [
+        OutfitItem(
+          name: 'Linen Shirt',
+          category: 'Tops',
+          emoji: '\u{1F454}',
+          source: 'ai',
+          imageName: 'white linen shirt',
+          imageType: 'shirt',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Tailored Trousers',
+          category: 'Bottoms',
+          emoji: '\u{1F456}',
+          source: 'ai',
+          imageName: 'beige tailored trousers',
+          imageType: 'pants',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Suede Loafers',
+          category: 'Shoes',
+          emoji: '\u{1F45E}',
+          source: 'ai',
+          imageName: 'brown suede loafers',
+          imageType: 'loafers',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Leather Watch',
+          category: 'Accessories',
+          emoji: '\u{231A}',
+          source: 'ai',
+          imageName: 'brown leather watch',
+          imageType: 'watch',
+          imageIndex: 0,
+        ),
+      ];
+    }
+
+    if (occ == 'sport') {
+      if (band == 'cold') {
+        return const [
+          OutfitItem(
+            name: 'Thermal Top',
+            category: 'Tops',
+            emoji: '\u{1F9E5}',
+            source: 'ai',
+            imageName: 'black thermal training top',
+            imageType: 'top',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Joggers',
+            category: 'Bottoms',
+            emoji: '\u{1F456}',
+            source: 'ai',
+            imageName: 'black running joggers',
+            imageType: 'pants',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Running Shoes',
+            category: 'Shoes',
+            emoji: '\u{1F45F}',
+            source: 'ai',
+            imageName: 'white running shoes',
+            imageType: 'shoes',
+            imageIndex: 0,
+          ),
+          OutfitItem(
+            name: 'Training Jacket',
+            category: 'Jackets',
+            emoji: '\u{1F9E5}',
+            source: 'ai',
+            imageName: 'black training jacket',
+            imageType: 'jacket',
+            imageIndex: 0,
+          ),
+        ];
+      }
+      return const [
+        OutfitItem(
+          name: 'Dry-Fit Tee',
+          category: 'Tops',
+          emoji: '\u{1F455}',
+          source: 'ai',
+          imageName: 'white dry fit t shirt',
+          imageType: 'tshirt',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Running Shorts',
+          category: 'Bottoms',
+          emoji: '\u{1FA73}',
+          source: 'ai',
+          imageName: 'black running shorts',
+          imageType: 'shorts',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Training Sneakers',
+          category: 'Shoes',
+          emoji: '\u{1F45F}',
+          source: 'ai',
+          imageName: 'white training sneakers',
+          imageType: 'sneakers',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Sports Cap',
+          category: 'Accessories',
+          emoji: '\u{1F9E2}',
+          source: 'ai',
+          imageName: 'black sports cap',
+          imageType: 'cap',
+          imageIndex: 0,
+        ),
+      ];
+    }
+
+    if (band == 'hot') {
+      return const [
+        OutfitItem(
+          name: 'Cotton Tee',
+          category: 'Tops',
+          emoji: '\u{1F455}',
+          source: 'ai',
+          imageName: 'white cotton t-shirt',
+          imageType: 'tshirt',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Chino Shorts',
+          category: 'Bottoms',
+          emoji: '\u{1FA73}',
+          source: 'ai',
+          imageName: 'beige chino shorts',
+          imageType: 'shorts',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Low Top Sneakers',
+          category: 'Shoes',
+          emoji: '\u{1F45F}',
+          source: 'ai',
+          imageName: 'white low top sneakers',
+          imageType: 'sneakers',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Sunglasses',
+          category: 'Accessories',
+          emoji: '\u{1F576}',
+          source: 'ai',
+          imageName: 'tortoise sunglasses',
+          imageType: 'sunglasses',
+          imageIndex: 0,
+        ),
+      ];
+    }
+
+    if (band == 'cold') {
+      return const [
+        OutfitItem(
+          name: 'Warm Hoodie',
+          category: 'Tops',
+          emoji: '\u{1F9E5}',
+          source: 'ai',
+          imageName: 'charcoal warm hoodie',
+          imageType: 'hoodie',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Dark Jeans',
+          category: 'Bottoms',
+          emoji: '\u{1F456}',
+          source: 'ai',
+          imageName: 'dark denim jeans',
+          imageType: 'jeans',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Leather Boots',
+          category: 'Shoes',
+          emoji: '\u{1F97E}',
+          source: 'ai',
+          imageName: 'brown leather boots',
+          imageType: 'boots',
+          imageIndex: 0,
+        ),
+        OutfitItem(
+          name: 'Puffer Jacket',
+          category: 'Jackets',
+          emoji: '\u{1F9E5}',
+          source: 'ai',
+          imageName: 'black puffer jacket',
+          imageType: 'jacket',
+          imageIndex: 0,
+        ),
+      ];
+    }
+
+    return const [
+      OutfitItem(
+        name: 'Casual Shirt',
+        category: 'Tops',
+        emoji: '\u{1F454}',
+        source: 'ai',
+        imageName: 'light blue casual shirt',
+        imageType: 'shirt',
+        imageIndex: 0,
+      ),
+      OutfitItem(
+        name: 'Chino Pants',
+        category: 'Bottoms',
+        emoji: '\u{1F456}',
+        source: 'ai',
+        imageName: 'navy chino pants',
+        imageType: 'pants',
+        imageIndex: 0,
+      ),
+      OutfitItem(
+        name: 'White Sneakers',
+        category: 'Shoes',
+        emoji: '\u{1F45F}',
+        source: 'ai',
+        imageName: 'white sneakers',
+        imageType: 'sneakers',
+        imageIndex: 0,
+      ),
+      OutfitItem(
+        name: 'Gray Cardigan',
+        category: 'Jackets',
+        emoji: '\u{1F9E5}',
+        source: 'ai',
+        imageName: 'gray cardigan sweater',
+        imageType: 'cardigan',
+        imageIndex: 0,
+      ),
+    ];
+  }
+
   List<OutfitItem> _fallbackItems({
     required String mode,
     required _WardrobeIndex wardrobe,
+    required String audience,
+    String occasion = 'Casual',
+    double temperatureC = 24,
   }) {
     final modeLower = mode.toLowerCase();
     final isWardrobeMode = modeLower.contains('use my wardrobe');
     final isMixMode = modeLower.contains('mix');
+    final aiFallback = _cohesiveAiFallbackItems(
+      audience: audience,
+      occasion: occasion,
+      temperatureC: temperatureC,
+    );
 
     if (isWardrobeMode) {
       if (wardrobe.items.isNotEmpty) {
@@ -953,76 +1804,10 @@ Weather rules:
         );
       }).toList();
 
-      return [
-        ...fromWardrobe,
-        const OutfitItem(
-          name: 'Suggested Jacket',
-          category: 'Jackets',
-          emoji: '\u{1F9E5}',
-          source: 'ai',
-          imageName: 'light jacket',
-          imageType: 'jacket',
-          imageIndex: 0,
-        ),
-        const OutfitItem(
-          name: 'Suggested Sneakers',
-          category: 'Shoes',
-          emoji: '\u{1F45F}',
-          source: 'ai',
-          imageName: 'white sneakers',
-          imageType: 'shoes',
-          imageIndex: 0,
-        ),
-        const OutfitItem(
-          name: 'Suggested Accessory',
-          category: 'Accessories',
-          emoji: '\u{1F9E2}',
-          source: 'ai',
-          imageName: 'fashion accessory',
-          imageType: 'accessory',
-          imageIndex: 0,
-        ),
-      ].take(4).toList();
+      return [...fromWardrobe, ...aiFallback].take(4).toList();
     }
 
-    return const [
-      OutfitItem(
-        name: 'Linen Crew Tee',
-        category: 'Tops',
-        emoji: '\u{1F455}',
-        source: 'ai',
-        imageName: 'white linen t-shirt',
-        imageType: 'tshirt',
-        imageIndex: 0,
-      ),
-      OutfitItem(
-        name: 'Tailored Shorts',
-        category: 'Bottoms',
-        emoji: '\u{1FA73}',
-        source: 'ai',
-        imageName: 'tailored shorts',
-        imageType: 'shorts',
-        imageIndex: 0,
-      ),
-      OutfitItem(
-        name: 'Suede Loafers',
-        category: 'Shoes',
-        emoji: '\u{1F45E}',
-        source: 'ai',
-        imageName: 'suede loafers',
-        imageType: 'loafers',
-        imageIndex: 0,
-      ),
-      OutfitItem(
-        name: 'Light Jacket',
-        category: 'Jackets',
-        emoji: '\u{1F9E5}',
-        source: 'ai',
-        imageName: 'light jacket',
-        imageType: 'jacket',
-        imageIndex: 0,
-      ),
-    ];
+    return aiFallback;
   }
 }
 

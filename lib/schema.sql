@@ -228,6 +228,52 @@ CREATE POLICY "Users can update own stats" ON public.wardrobe_stats
 
 CREATE INDEX IF NOT EXISTS idx_stats_user_id ON public.wardrobe_stats(user_id);
 
+-- ADMIN RLS HELPERS (OPTIONAL FOR DASHBOARD-WIDE READ ACCESS)
+-- NOTE:
+-- 1) Set admin role on auth user app_metadata, for example:
+--    update auth.users
+--    set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"role":"admin"}'::jsonb
+--    where email = 'admin2002@gmail.com';
+-- 2) User must sign out/in again so JWT includes the new role.
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT coalesce(
+    (auth.jwt() -> 'app_metadata' ->> 'role') IN ('admin', 'super_admin'),
+    false
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
+
+CREATE POLICY "Admins can view all users" ON public.users
+  FOR SELECT TO authenticated USING (public.is_admin());
+
+CREATE POLICY "Admins can view all favorite colors" ON public.user_favorite_colors
+  FOR SELECT TO authenticated USING (public.is_admin());
+
+CREATE POLICY "Admins can view all occasions" ON public.user_occasions
+  FOR SELECT TO authenticated USING (public.is_admin());
+
+CREATE POLICY "Admins can view all clothing" ON public.clothing_items
+  FOR SELECT TO authenticated USING (public.is_admin());
+
+CREATE POLICY "Admins can view all outfits" ON public.saved_outfits
+  FOR SELECT TO authenticated USING (public.is_admin());
+
+CREATE POLICY "Admins can view all outfit items" ON public.outfit_items
+  FOR SELECT TO authenticated USING (public.is_admin());
+
+CREATE POLICY "Admins can view all wear history" ON public.wear_history
+  FOR SELECT TO authenticated USING (public.is_admin());
+
+CREATE POLICY "Admins can view all stats" ON public.wardrobe_stats
+  FOR SELECT TO authenticated USING (public.is_admin());
+
 -- FUNCTIONS
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER AS $$

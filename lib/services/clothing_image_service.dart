@@ -6,6 +6,15 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 class ClothingImageService {
+  ClothingImageService({http.Client? client}) : _client = client ?? http.Client();
+
+  final http.Client _client;
+
+  static const bool _useExternalApi = bool.fromEnvironment(
+    'CLOTHING_IMAGE_USE_EXTERNAL_API',
+    defaultValue: false,
+  );
+
   static const String _baseUrls = String.fromEnvironment(
     'CLOTHING_IMAGE_API_BASE_URLS',
     defaultValue: '',
@@ -13,26 +22,55 @@ class ClothingImageService {
 
   static const String _baseUrl = String.fromEnvironment(
     'CLOTHING_IMAGE_API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8000',
+    defaultValue: '',
   );
 
   static const String _imagePath = '/api/v1/clothing/image';
-  static const String _searchPath = '/api/v1/clothing/search';
   static const Duration _primaryRequestTimeout = Duration(seconds: 12);
   static const Duration _secondaryRequestTimeout = Duration(seconds: 5);
-  static const Duration _metadataTimeout = Duration(seconds: 8);
+  static const Duration _searchTimeout = Duration(seconds: 8);
+  static const Duration _imageDownloadTimeout = Duration(seconds: 12);
   static const Duration _fallbackTimeout = Duration(seconds: 6);
+  static const Duration _healthDownloadTimeout = Duration(seconds: 8);
   static const bool _allowGenericFallback = bool.fromEnvironment(
     'CLOTHING_IMAGE_ALLOW_FALLBACK',
     defaultValue: true,
   );
+
+  static const Map<String, String> _browserHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/124.0.0.0 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9',
+  };
+
+  static const Map<String, String> _htmlHeaders = {
+    ..._browserHeaders,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  };
+
   static const Map<String, String> _jsonHeaders = {
-    'Accept': 'application/json',
+    ..._browserHeaders,
+    'Accept': 'application/json,text/javascript,*/*;q=0.8',
     'ngrok-skip-browser-warning': 'true',
   };
+
   static const Map<String, String> _imageHeaders = {
-    'Accept': 'image/*',
+    ..._browserHeaders,
+    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
     'ngrok-skip-browser-warning': 'true',
+  };
+
+  static const Set<String> _skipDomains = {
+    'gstatic.com',
+    'google.com',
+    'googleapis.com',
+    'googleusercontent.com',
+    'google-analytics.com',
+    'schema.org',
+    'w3.org',
+    'duckduckgo.com',
+    'bing.com',
   };
 
   void _terminalDebug(String message) {
@@ -42,20 +80,22 @@ class ClothingImageService {
   }
 
   List<String> get _candidateBaseUrls {
+    if (!_useExternalApi) return <String>[];
+
     final configured = <String>[
       if (_baseUrls.trim().isNotEmpty) ..._baseUrls.split(','),
       if (_baseUrl.trim().isNotEmpty) _baseUrl,
     ];
     final raw = <String>[
       ...configured,
-      'http://10.0.2.2:8000',
-      'http://127.0.0.1:8000',
-      'http://localhost:8000',
+      if (configured.isEmpty) 'http://10.0.2.2:8000',
+      if (configured.isEmpty) 'http://127.0.0.1:8000',
+      if (configured.isEmpty) 'http://localhost:8000',
     ];
     final unique = <String>{};
     final out = <String>[];
     for (final value in raw) {
-      final v = value.trim();
+      final v = value.trim().replaceAll(RegExp(r'/$'), '');
       if (v.isEmpty) continue;
       if (unique.add(v)) out.add(v);
     }
@@ -63,12 +103,16 @@ class ClothingImageService {
   }
 
   Uri buildImageUri({required String name, String? type, int? index}) {
-    return buildImageUriForBase(
-      baseUrl: _baseUrl,
-      name: name,
-      type: type,
-      index: index,
-    );
+    final bases = _candidateBaseUrls;
+    if (bases.isNotEmpty) {
+      return buildImageUriForBase(
+        baseUrl: bases.first,
+        name: name,
+        type: type,
+        index: index,
+      );
+    }
+    return _internalImageUri(name: name, type: type, index: index);
   }
 
   Uri buildImageUriForBase({
@@ -91,18 +135,106 @@ class ClothingImageService {
     return uri.replace(queryParameters: params);
   }
 
-  Uri _buildSearchUriForBase({
-    required String baseUrl,
-    required String name,
-    required String type,
-  }) {
-    final base = baseUrl.endsWith('/')
-        ? baseUrl.substring(0, baseUrl.length - 1)
-        : baseUrl;
-    final uri = Uri.parse('$base$_searchPath');
-    return uri.replace(
-      queryParameters: {'name': name, 'type': type, 'max_results': '10'},
+  Uri _internalImageUri({required String name, String? type, int? index}) {
+    return Uri(
+      scheme: 'clothing-search',
+      host: 'image',
+      queryParameters: <String, String>{
+        'name': name,
+        if (type != null && type.trim().isNotEmpty) 'type': type.trim(),
+        if (index != null && index >= 0) 'index': '$index',
+      },
     );
+  }
+
+  bool _shouldSkipUrl(String url) {
+    try {
+      final parsed = Uri.parse(url);
+      final host = parsed.host.toLowerCase();
+      if (parsed.scheme != 'http' && parsed.scheme != 'https') return true;
+      if (host.isEmpty) return true;
+      return _skipDomains.any(host.contains);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  String _decodeSearchUrl(String raw) {
+    var value = raw
+        .replaceAll(r'\/', '/')
+        .replaceAll(r'\u0026', '&')
+        .replaceAll(r'\u003d', '=')
+        .replaceAll(r'\u002f', '/')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
+
+    try {
+      value = Uri.decodeFull(value);
+    } catch (_) {
+      // Keep the original value when a search engine returns a partial escape.
+    }
+    return value;
+  }
+
+  List<_ImageSearchHit> _dedupeHits(Iterable<_ImageSearchHit> hits) {
+    final seen = <String>{};
+    final out = <_ImageSearchHit>[];
+    for (final hit in hits) {
+      final url = _decodeSearchUrl(hit.url.trim());
+      if (url.isEmpty || _shouldSkipUrl(url)) continue;
+      if (seen.add(url)) {
+        out.add(
+          _ImageSearchHit(
+            url: url,
+            title: hit.title,
+            pageUrl: hit.pageUrl,
+            source: hit.source,
+          ),
+        );
+      }
+    }
+    return out;
+  }
+
+  String? _detectImageMime(Uint8List bytes) {
+    if (bytes.length < 8) return null;
+    if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
+      return 'image/jpeg';
+    }
+    if (bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47 &&
+        bytes[4] == 0x0D &&
+        bytes[5] == 0x0A &&
+        bytes[6] == 0x1A &&
+        bytes[7] == 0x0A) {
+      return 'image/png';
+    }
+    if (bytes[0] == 0x47 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        (bytes[3] == 0x38 && (bytes[4] == 0x37 || bytes[4] == 0x39))) {
+      return 'image/gif';
+    }
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return 'image/webp';
+    }
+    if (bytes[0] == 0x42 && bytes[1] == 0x4D) {
+      return 'image/bmp';
+    }
+    return null;
   }
 
   List<String> _typeKeywords(String name, String type) {
@@ -119,15 +251,38 @@ class ClothingImageService {
     if (text.contains('shoe') ||
         text.contains('sneaker') ||
         text.contains('loafer') ||
-        text.contains('boot')) {
-      return const ['shoe', 'sneaker', 'loafer', 'boot', 'footwear'];
+        text.contains('boot') ||
+        text.contains('sandal') ||
+        text.contains('heel') ||
+        text.contains('flat')) {
+      return const [
+        'shoe',
+        'sneaker',
+        'loafer',
+        'boot',
+        'sandal',
+        'heel',
+        'flat',
+        'footwear',
+      ];
     }
     if (text.contains('pant') ||
         text.contains('trouser') ||
         text.contains('jean') ||
         text.contains('short') ||
-        text.contains('jogger')) {
-      return const ['pant', 'trouser', 'jean', 'short', 'jogger', 'bottom'];
+        text.contains('jogger') ||
+        text.contains('skirt') ||
+        text.contains('legging')) {
+      return const [
+        'pant',
+        'trouser',
+        'jean',
+        'short',
+        'jogger',
+        'skirt',
+        'legging',
+        'bottom',
+      ];
     }
     if (text.contains('jacket') ||
         text.contains('coat') ||
@@ -141,18 +296,21 @@ class ClothingImageService {
     }
     if (text.contains('shirt') ||
         text.contains('tee') ||
-        text.contains('top')) {
+        text.contains('top') ||
+        text.contains('blouse')) {
       return const ['shirt', 'tee', 'top', 'blouse'];
+    }
+    if (text.contains('acc') ||
+        text.contains('bag') ||
+        text.contains('belt') ||
+        text.contains('scarf')) {
+      return const ['accessory', 'bag', 'belt', 'scarf'];
     }
     return const ['clothing'];
   }
 
   List<String> _nameKeywords(String name) {
     final stop = <String>{
-      'men',
-      'man',
-      'women',
-      'woman',
       'for',
       'with',
       'and',
@@ -176,31 +334,67 @@ class ClothingImageService {
 
   List<String> _negativeKeywords(String name, String type) {
     final text = '${name.toLowerCase()} ${type.toLowerCase()}';
+    final negatives = <String>[];
+
+    if (text.contains('women') ||
+        text.contains("women's") ||
+        text.contains('woman') ||
+        text.contains('female') ||
+        text.contains('girl')) {
+      negatives.addAll([' men ', " men's ", 'male', 'boy']);
+    } else if (text.contains('men') ||
+        text.contains("men's") ||
+        text.contains('man') ||
+        text.contains('male') ||
+        text.contains('boy')) {
+      negatives.addAll(['women', "women's", 'female', 'girl', 'dress']);
+    }
+
     if (text.contains('watch')) {
-      return const ['shoe', 'boot', 'jean', 'sunglass', 'dress'];
+      negatives.addAll(['shoe', 'boot', 'jean', 'sunglass', 'dress']);
+      return negatives;
     }
     if (text.contains('sunglass')) {
-      return const ['watch', 'shoe', 'boot', 'jean'];
+      negatives.addAll(['watch', 'shoe', 'boot', 'jean']);
+      return negatives;
+    }
+    if (text.contains('loafer') ||
+        text.contains('oxford') ||
+        text.contains('derby')) {
+      negatives.addAll(['sneaker', 'trainer', 'running', 'nike', 'adidas']);
+      return negatives;
     }
     if (text.contains('shoe') ||
         text.contains('sneaker') ||
         text.contains('boot')) {
-      return const ['watch', 'sunglass', 'dress'];
+      negatives.addAll(['watch', 'sunglass', 'dress']);
+      return negatives;
+    }
+    if (text.contains('short')) {
+      negatives.addAll(['jean', 'trouser', 'pants', 'legging']);
+      return negatives;
     }
     if (text.contains('pant') ||
         text.contains('jean') ||
         text.contains('short') ||
         text.contains('jogger')) {
-      return const ['watch', 'sunglass', 'shoe'];
+      negatives.addAll(['watch', 'sunglass', 'shoe']);
+      return negatives;
+    }
+    if (text.contains('dress')) {
+      negatives.addAll(['shirt', 'tshirt', 'pants', 'shorts', 'men']);
+      return negatives;
     }
     if (text.contains('shirt') ||
         text.contains('tee') ||
         text.contains('top') ||
         text.contains('hoodie') ||
         text.contains('jacket')) {
-      return const ['watch', 'sunglass'];
+      negatives.addAll(['watch', 'sunglass']);
+      return negatives;
     }
-    return const ['watch', 'sunglass'];
+    negatives.addAll(['watch', 'sunglass']);
+    return negatives;
   }
 
   String _normalizedType(String name, String type) {
@@ -213,7 +407,8 @@ class ClothingImageService {
         text.contains('loafer') ||
         text.contains('boot') ||
         text.contains('sandal') ||
-        text.contains('heel')) {
+        text.contains('heel') ||
+        text.contains('flat')) {
       return 'shoes';
     }
     if (text.contains('pant') ||
@@ -252,37 +447,141 @@ class ClothingImageService {
     return 'clothes';
   }
 
-  int _scoreImageUrl({
-    required String imageUrl,
+  String _scoreText(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'%[0-9a-f]{2}', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  bool _containsScorePhrase(String haystack, String phrase) {
+    final normalizedPhrase = _scoreText(phrase);
+    if (normalizedPhrase.isEmpty) return false;
+    return ' $haystack '.contains(' $normalizedPhrase ');
+  }
+
+  List<String> _strictTypeKeywords(String name, String type) {
+    final text = '${name.toLowerCase()} ${type.toLowerCase()}';
+    if (text.contains('loafer')) return const ['loafer', 'loafers'];
+    if (text.contains('sneaker')) {
+      return const ['sneaker', 'sneakers', 'trainer', 'trainers'];
+    }
+    if (text.contains('boot')) return const ['boot', 'boots', 'chelsea'];
+    if (text.contains('sandal')) return const ['sandal', 'sandals'];
+    if (text.contains('heel')) return const ['heel', 'heels'];
+    if (text.contains('flat')) return const ['flat', 'flats'];
+    if (text.contains('short')) return const ['short', 'shorts'];
+    if (text.contains('jean')) return const ['jean', 'jeans', 'denim'];
+    if (text.contains('legging')) return const ['legging', 'leggings'];
+    if (text.contains('skirt')) return const ['skirt'];
+    if (text.contains('chino')) return const ['chino', 'chinos'];
+    if (text.contains('pant') || text.contains('trouser')) {
+      return const ['pant', 'pants', 'trouser', 'trousers'];
+    }
+    if (text.contains('dress')) return const ['dress', 'gown'];
+    if (text.contains('blouse')) return const ['blouse'];
+    if (text.contains('tshirt') ||
+        text.contains('t-shirt') ||
+        text.contains('tee')) {
+      return const ['tshirt', 't shirt', 'tee'];
+    }
+    if (text.contains('shirt')) return const ['shirt'];
+    if (text.contains('jacket')) return const ['jacket'];
+    if (text.contains('blazer')) return const ['blazer'];
+    if (text.contains('coat')) return const ['coat'];
+    if (text.contains('hoodie')) return const ['hoodie'];
+    if (text.contains('sweater')) return const ['sweater'];
+    if (text.contains('cardigan')) return const ['cardigan'];
+    if (text.contains('sunglass')) return const ['sunglass', 'sunglasses'];
+    if (text.contains('watch')) return const ['watch'];
+    if (text.contains('bag')) return const ['bag', 'handbag', 'tote', 'clutch'];
+    if (text.contains('cap') || text.contains('hat')) {
+      return const ['cap', 'hat'];
+    }
+    return _typeKeywords(name, type);
+  }
+
+  List<String> _conflictingTypeKeywords(String name, String type) {
+    final text = '${name.toLowerCase()} ${type.toLowerCase()}';
+    if (text.contains('loafer')) {
+      return const ['sneaker', 'sneakers', 'trainer', 'running shoe'];
+    }
+    if (text.contains('sneaker')) {
+      return const ['loafer', 'boot', 'dress shoe', 'tshirt', 'shirt'];
+    }
+    if (text.contains('short')) {
+      return const ['pants', 'trouser', 'trousers', 'jeans', 'leggings'];
+    }
+    if (text.contains('pant') || text.contains('trouser')) {
+      return const ['shorts', 'dress', 'skirt'];
+    }
+    if (text.contains('dress')) {
+      return const ['shirt', 'tshirt', 'tee', 'pants', 'shorts'];
+    }
+    if (text.contains('shirt') ||
+        text.contains('tee') ||
+        text.contains('blouse') ||
+        text.contains('top')) {
+      return const ['shorts', 'pants', 'shoes', 'sneakers', 'dress'];
+    }
+    if (text.contains('jacket') || text.contains('coat')) {
+      return const ['shirt', 'tshirt', 'pants', 'shoes'];
+    }
+    if (text.contains('watch')) {
+      return const ['shoe', 'shirt', 'pants', 'dress'];
+    }
+    if (text.contains('sunglass')) {
+      return const ['shoe', 'shirt', 'pants', 'watch'];
+    }
+    return const <String>[];
+  }
+
+  int _scoreImageHit({
+    required _ImageSearchHit hit,
+    required String name,
     required String type,
     required List<String> positives,
     required List<String> negatives,
   }) {
-    final url = imageUrl.toLowerCase();
+    final text = _scoreText(
+      '${hit.url} ${hit.title ?? ''} ${hit.pageUrl ?? ''} ${hit.source ?? ''}',
+    );
     var score = 0;
     var positiveHits = 0;
 
     for (final p in positives) {
-      if (url.contains(p)) {
+      if (_containsScorePhrase(text, p)) {
         score += 2;
         positiveHits++;
       }
     }
 
+    final strictTokens = _strictTypeKeywords(name, type);
+    final strictTypeHit = strictTokens.any((token) {
+      return _containsScorePhrase(text, token);
+    });
     final typeTokens = _typeKeywords('', type);
-    final typeHit = typeTokens.any(url.contains);
-    if (typeHit) {
-      score += 8;
+    final typeHit = typeTokens.any((token) => _containsScorePhrase(text, token));
+    if (strictTypeHit) {
+      score += 12;
+    } else if (typeHit) {
+      score += 5;
     } else {
-      score -= 4;
+      score -= 8;
     }
 
     for (final n in negatives) {
-      if (url.contains(n)) score -= 7;
+      if (_containsScorePhrase(text, n)) score -= 10;
+    }
+    for (final n in _conflictingTypeKeywords(name, type)) {
+      if (_containsScorePhrase(text, n)) score -= 12;
     }
     if (positiveHits == 0) {
-      score -= 2;
+      score -= 3;
     }
+    final url = hit.url.toLowerCase();
     if (url.contains('.jpg') ||
         url.contains('.jpeg') ||
         url.contains('.png') ||
@@ -292,92 +591,463 @@ class ClothingImageService {
     return score;
   }
 
-  bool _looksLikeImageBytes(Uint8List bytes) {
-    if (bytes.length < 4) return false;
-    final jpeg = bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
-    final png =
-        bytes.length >= 8 &&
-        bytes[0] == 0x89 &&
-        bytes[1] == 0x50 &&
-        bytes[2] == 0x4E &&
-        bytes[3] == 0x47;
-    final gif = bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46;
-    final webp =
-        bytes.length >= 12 &&
-        bytes[0] == 0x52 &&
-        bytes[1] == 0x49 &&
-        bytes[2] == 0x46 &&
-        bytes[3] == 0x46 &&
-        bytes[8] == 0x57 &&
-        bytes[9] == 0x45 &&
-        bytes[10] == 0x42 &&
-        bytes[11] == 0x50;
-    return jpeg || png || gif || webp;
+  String? _normalizedAudience(String? audience) {
+    final value = audience?.toLowerCase().trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.contains('women') ||
+        value.contains('female') ||
+        value.contains('girl')) {
+      return "women's";
+    }
+    if (value.contains('men') || value.contains('male') || value.contains('boy')) {
+      return "men's";
+    }
+    return null;
   }
 
-  bool _isGifBytes(Uint8List bytes) {
-    return bytes.length >= 6 &&
-        bytes[0] == 0x47 &&
-        bytes[1] == 0x49 &&
-        bytes[2] == 0x46;
+  String _audienceQualifiedName(String name, String? audience) {
+    final normalized = _normalizedAudience(audience);
+    var trimmed = name.trim();
+    if (normalized == null || trimmed.isEmpty) return trimmed;
+    if (normalized == "women's") {
+      trimmed = trimmed
+          .replaceAll(
+            RegExp(r"\bmen'?s?\b|\bmale\b|\bboys?\b", caseSensitive: false),
+            '',
+          )
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    } else {
+      trimmed = trimmed
+          .replaceAll(
+            RegExp(r"\bwomen'?s?\b|\bfemale\b|\bgirls?\b", caseSensitive: false),
+            '',
+          )
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
+    final lower = trimmed.toLowerCase();
+    final hasTargetAudience = normalized == "women's"
+        ? (lower.contains('women') ||
+              lower.contains('female') ||
+              lower.contains('girl'))
+        : (lower.contains('men') || lower.contains('male') || lower.contains('boy'));
+    if (hasTargetAudience) {
+      return trimmed;
+    }
+    return '$normalized $trimmed';
   }
 
-  bool _isAnimatedWebpBytes(Uint8List bytes) {
-    if (bytes.length < 16) return false;
-    final isWebp =
-        bytes[0] == 0x52 &&
-        bytes[1] == 0x49 &&
-        bytes[2] == 0x46 &&
-        bytes[3] == 0x46 &&
-        bytes[8] == 0x57 &&
-        bytes[9] == 0x45 &&
-        bytes[10] == 0x42 &&
-        bytes[11] == 0x50;
-    if (!isWebp) return false;
+  String _buildQuery(String name, String? clothingType, {String? audience}) {
+    final qualifiedName = _audienceQualifiedName(name, audience);
+    final parts = <String>[qualifiedName];
+    if (clothingType != null && clothingType.trim().isNotEmpty) {
+      parts.add(clothingType.trim());
+    }
+    parts.add('single clothing item product photo isolated white background');
+    return parts.where((part) => part.trim().isNotEmpty).join(' ');
+  }
 
-    final animSignature = ascii.encode('ANIM');
-    for (var i = 0; i <= bytes.length - animSignature.length; i++) {
-      var matches = true;
-      for (var j = 0; j < animSignature.length; j++) {
-        if (bytes[i + j] != animSignature[j]) {
-          matches = false;
-          break;
+  Future<List<_ImageSearchHit>> _searchBing(
+    String query, {
+    int maxResults = 10,
+  }) async {
+    try {
+      final uri = Uri.https('www.bing.com', '/images/search', <String, String>{
+        'q': query,
+        'form': 'HDRSC2',
+        'first': '1',
+      });
+      final response = await _client
+          .get(
+            uri,
+            headers: const <String, String>{
+              ..._htmlHeaders,
+              'Referer': 'https://www.bing.com/',
+            },
+          )
+          .timeout(_searchTimeout);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('HTTP ${response.statusCode}');
+      }
+
+      final hits = <_ImageSearchHit>[];
+      for (final match in RegExp(
+        r'm="({[^"]+})"',
+        caseSensitive: false,
+      ).allMatches(response.body)) {
+        final rawJson = match.group(1);
+        if (rawJson == null || rawJson.isEmpty) continue;
+        try {
+          final decodedJson = jsonDecode(_decodeSearchUrl(rawJson));
+          if (decodedJson is! Map<String, dynamic>) continue;
+          final imageUrl = decodedJson['murl']?.toString() ??
+              decodedJson['imgurl']?.toString() ??
+              '';
+          if (imageUrl.trim().isEmpty) continue;
+          hits.add(
+            _ImageSearchHit(
+              url: imageUrl,
+              title: decodedJson['t']?.toString() ??
+                  decodedJson['desc']?.toString(),
+              pageUrl: decodedJson['purl']?.toString(),
+              source: 'Bing',
+            ),
+          );
+        } catch (_) {
+          // Bing occasionally emits partial JSON. Regex fallback below covers it.
         }
       }
-      if (matches) return true;
-    }
 
-    return false;
+      for (final pattern in <RegExp>[
+        RegExp(r'"murl":"([^"]+)"', caseSensitive: false),
+        RegExp(r'"imgurl":"([^"]+)"', caseSensitive: false),
+        RegExp(r'"turl":"([^"]+)"', caseSensitive: false),
+        RegExp(r'murl%3a(https?%3a%2f%2f[^&"]+)', caseSensitive: false),
+      ]) {
+        for (final match in pattern.allMatches(response.body)) {
+          final value = match.group(1);
+          if (value != null && value.isNotEmpty) {
+            hits.add(_ImageSearchHit(url: value, source: 'Bing'));
+          }
+        }
+        if (hits.isNotEmpty) break;
+      }
+
+      final unique = _dedupeHits(hits).take(maxResults).toList();
+      developer.log(
+        'Bing found ${unique.length} image candidates for $query',
+        name: 'ClothingImageService',
+      );
+      return unique;
+    } catch (e) {
+      developer.log('Bing failed for $query: $e', name: 'ClothingImageService');
+      return <_ImageSearchHit>[];
+    }
   }
 
-  String? _unsupportedImageReason(http.Response response) {
-    final contentType = response.headers['content-type']?.toLowerCase() ?? '';
-    if (contentType.contains('image/gif') || _isGifBytes(response.bodyBytes)) {
-      return 'Animated GIF response rejected';
+  String? _extractDuckDuckGoVqd(String html) {
+    for (final pattern in <RegExp>[
+      RegExp("vqd=[\"']?([^&\"'\\s]+)", caseSensitive: false),
+      RegExp(r'"vqd":"([^"]+)"', caseSensitive: false),
+      RegExp(r"vqd='([^']+)'", caseSensitive: false),
+    ]) {
+      final match = pattern.firstMatch(html);
+      final value = match?.group(1);
+      if (value != null && value.trim().isNotEmpty) {
+        return value.trim();
+      }
     }
-    if (_isAnimatedWebpBytes(response.bodyBytes)) {
-      return 'Animated WebP response rejected';
-    }
-    if (contentType.contains('image/')) {
-      return null;
-    }
-    if (_looksLikeImageBytes(response.bodyBytes)) {
-      return null;
-    }
-    return 'Non-image response (content-type=$contentType)';
+    return null;
   }
 
-  Future<ClothingImageFetchResult> _tryFetchImageFromUri({
+  Future<List<_ImageSearchHit>> _searchDuckDuckGo(
+    String query, {
+    int maxResults = 10,
+  }) async {
+    try {
+      final pageUri = Uri.https('duckduckgo.com', '/', <String, String>{
+        'q': query,
+        'iax': 'images',
+        'ia': 'images',
+      });
+      final pageResponse = await _client
+          .get(pageUri, headers: _htmlHeaders)
+          .timeout(_searchTimeout);
+
+      if (pageResponse.statusCode < 200 || pageResponse.statusCode >= 300) {
+        throw StateError('vqd HTTP ${pageResponse.statusCode}');
+      }
+
+      final vqd = _extractDuckDuckGoVqd(pageResponse.body);
+      if (vqd == null) {
+        throw StateError('missing vqd token');
+      }
+
+      final imageUri = Uri.https('duckduckgo.com', '/i.js', <String, String>{
+        'l': 'us-en',
+        'o': 'json',
+        'q': query,
+        'vqd': vqd,
+        'f': ',,,',
+        'p': '1',
+      });
+      final response = await _client
+          .get(
+            imageUri,
+            headers: const <String, String>{
+              ..._jsonHeaders,
+              'Referer': 'https://duckduckgo.com/',
+            },
+          )
+          .timeout(_searchTimeout);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('images HTTP ${response.statusCode}');
+      }
+
+      final decoded = jsonDecode(response.body);
+      final results = decoded is Map<String, dynamic> ? decoded['results'] : null;
+      final hits = <_ImageSearchHit>[];
+      if (results is List) {
+        for (final raw in results) {
+          if (raw is! Map<String, dynamic>) continue;
+          final imageUrl = raw['image']?.toString() ?? '';
+          if (imageUrl.isNotEmpty) {
+            hits.add(
+              _ImageSearchHit(
+                url: imageUrl,
+                title: raw['title']?.toString(),
+                pageUrl: raw['url']?.toString(),
+                source: raw['source']?.toString() ?? 'DuckDuckGo',
+              ),
+            );
+          }
+          if (hits.length >= maxResults * 2) break;
+        }
+      }
+
+      final unique = _dedupeHits(hits).take(maxResults).toList();
+      developer.log(
+        'DuckDuckGo found ${unique.length} image candidates for $query',
+        name: 'ClothingImageService',
+      );
+      return unique;
+    } catch (e) {
+      developer.log(
+        'DuckDuckGo failed for $query: $e',
+        name: 'ClothingImageService',
+      );
+      return <_ImageSearchHit>[];
+    }
+  }
+
+  Future<List<_ImageSearchHit>> _searchGoogle(
+    String query, {
+    int maxResults = 10,
+  }) async {
+    try {
+      final uri = Uri.https('www.google.com', '/search', <String, String>{
+        'q': query,
+        'tbm': 'isch',
+        'ijn': '0',
+        'tbs': 'isz:m',
+      });
+      final response = await _client
+          .get(
+            uri,
+            headers: const <String, String>{
+              ..._browserHeaders,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;'
+                  'q=0.9,image/webp,*/*;q=0.8',
+              'Referer': 'https://www.google.com/',
+            },
+          )
+          .timeout(_searchTimeout);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('HTTP ${response.statusCode}');
+      }
+
+      final hits = <_ImageSearchHit>[];
+      final patterns = <RegExp>[
+        RegExp(
+          r'\["(https?://[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)",[0-9]+,[0-9]+\]',
+          caseSensitive: false,
+        ),
+        RegExp(
+          r'"(https?://[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)"',
+          caseSensitive: false,
+        ),
+      ];
+
+      for (final pattern in patterns) {
+        for (final match in pattern.allMatches(response.body)) {
+          final value = match.group(1);
+          if (value != null && value.isNotEmpty) {
+            hits.add(_ImageSearchHit(url: value, source: 'Google'));
+          }
+          if (hits.length >= maxResults * 2) break;
+        }
+        if (hits.length >= maxResults * 2) break;
+      }
+
+      final unique = _dedupeHits(hits).take(maxResults).toList();
+      developer.log(
+        'Google found ${unique.length} image candidates for $query',
+        name: 'ClothingImageService',
+      );
+      return unique;
+    } catch (e) {
+      developer.log('Google failed for $query: $e', name: 'ClothingImageService');
+      return <_ImageSearchHit>[];
+    }
+  }
+
+  Future<_SearchResult> _searchImages(
+    String query, {
+    int maxResults = 10,
+  }) async {
+    final engines =
+        <({String name, Future<List<_ImageSearchHit>> Function() run})>[
+      (name: 'Bing', run: () => _searchBing(query, maxResults: maxResults)),
+      (
+        name: 'DuckDuckGo',
+        run: () => _searchDuckDuckGo(query, maxResults: maxResults),
+      ),
+      (name: 'Google', run: () => _searchGoogle(query, maxResults: maxResults)),
+    ];
+
+    for (final engine in engines) {
+      final urls = await engine.run();
+      if (urls.isNotEmpty) {
+        return _SearchResult(query: query, engine: engine.name, hits: urls);
+      }
+      developer.log(
+        '${engine.name} returned no image URLs for $query',
+        name: 'ClothingImageService',
+      );
+    }
+    return _SearchResult(
+      query: query,
+      engine: 'none',
+      hits: const <_ImageSearchHit>[],
+    );
+  }
+
+  List<_ImageCandidate> _rankCandidates({
+    required List<_ImageSearchHit> hits,
+    required String name,
+    required String type,
+    int? preferredIndex,
+    int minConfidenceScore = 0,
+  }) {
+    final positives = <String>[
+      ..._typeKeywords(name, type),
+      ..._nameKeywords(name),
+    ];
+    final negatives = _negativeKeywords(name, type);
+    final candidates = <_ImageCandidate>[
+      for (var i = 0; i < hits.length; i++)
+        _ImageCandidate(
+          index: i,
+          hit: hits[i],
+          score: _scoreImageHit(
+            hit: hits[i],
+            name: name,
+            type: type,
+            positives: positives,
+            negatives: negatives,
+          ),
+        ),
+    ];
+
+    if (preferredIndex != null && preferredIndex >= 0 && candidates.isNotEmpty) {
+      final start = preferredIndex >= candidates.length
+          ? candidates.length - 1
+          : preferredIndex;
+      return <_ImageCandidate>[
+        ...candidates.where((candidate) => candidate.index >= start),
+        ...candidates.where((candidate) => candidate.index < start),
+      ];
+    }
+
+    final confident = candidates
+        .where((candidate) => candidate.score >= minConfidenceScore)
+        .toList()
+      ..sort((a, b) {
+        final byScore = b.score.compareTo(a.score);
+        return byScore == 0 ? a.index.compareTo(b.index) : byScore;
+      });
+    final rest = candidates
+        .where((candidate) => candidate.score < minConfidenceScore)
+        .toList();
+
+    if (minConfidenceScore > 0 && confident.isEmpty) {
+      return const <_ImageCandidate>[];
+    }
+    if (confident.isEmpty) return candidates;
+    return <_ImageCandidate>[...confident, ...rest];
+  }
+
+  Future<_DownloadedImage> _downloadImageUrl(
+    _ImageCandidate candidate, {
+    Duration timeout = _imageDownloadTimeout,
+  }) async {
+    final uri = Uri.parse(candidate.url);
+    final response = await _client
+        .get(uri, headers: _imageHeaders)
+        .timeout(timeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('HTTP ${response.statusCode}');
+    }
+    if (response.bodyBytes.isEmpty) {
+      throw StateError('empty body');
+    }
+
+    final mimeType = _detectImageMime(response.bodyBytes);
+    if (mimeType == null) {
+      final contentType = response.headers['content-type'] ?? 'unknown';
+      throw StateError('non-image response ($contentType)');
+    }
+
+    return _DownloadedImage(
+      bytes: response.bodyBytes,
+      mimeType: mimeType,
+      sourceUrl: candidate.url,
+      resultIndex: candidate.index,
+      score: candidate.score,
+    );
+  }
+
+  Future<_DownloadSelection> _downloadFirstValidImage({
+    required List<_ImageSearchHit> hits,
+    required String name,
+    required String type,
+    int? preferredIndex,
+    int? maxAttempts,
+    int minConfidenceScore = 0,
+    Duration timeout = _imageDownloadTimeout,
+  }) async {
+    final candidates = _rankCandidates(
+      hits: hits,
+      name: name,
+      type: type,
+      preferredIndex: preferredIndex,
+      minConfidenceScore: minConfidenceScore,
+    );
+
+    String? lastError;
+    var attempts = 0;
+    for (final candidate in candidates) {
+      if (maxAttempts != null && attempts >= maxAttempts) break;
+      attempts++;
+      try {
+        final image = await _downloadImageUrl(candidate, timeout: timeout);
+        return _DownloadSelection(image: image, attempts: attempts);
+      } catch (e) {
+        lastError = 'Image ${candidate.index} failed: $e';
+        developer.log(lastError, name: 'ClothingImageService');
+      }
+    }
+
+    return _DownloadSelection(
+      attempts: attempts,
+      error: lastError ?? 'No downloadable image candidates',
+    );
+  }
+
+  Future<ClothingImageFetchResult> _tryFetchImageFromExternalUri({
     required Uri uri,
     required Duration timeout,
   }) async {
     final stopwatch = Stopwatch()..start();
-    _terminalDebug(
-      'Image request started: $uri (timeout=${timeout.inSeconds}s)',
-    );
+    _terminalDebug('External image API request started: $uri');
 
     try {
-      final response = await http
+      final response = await _client
           .get(uri, headers: _imageHeaders)
           .timeout(timeout);
 
@@ -396,20 +1066,10 @@ class ClothingImageService {
         );
       }
 
-      if (response.bodyBytes.isEmpty) {
-        final msg = 'Empty image body from $uri after ${elapsedMs}ms';
-        _terminalDebug(msg);
-        return ClothingImageFetchResult(
-          bytes: null,
-          requestUri: uri,
-          statusCode: response.statusCode,
-          error: msg,
-        );
-      }
-
-      final unsupportedReason = _unsupportedImageReason(response);
-      if (unsupportedReason != null) {
-        final msg = '$unsupportedReason from $uri after ${elapsedMs}ms';
+      final mimeType = _detectImageMime(response.bodyBytes);
+      if (mimeType == null) {
+        final contentType = response.headers['content-type'] ?? 'unknown';
+        final msg = 'Non-image response ($contentType) from $uri';
         _terminalDebug(msg);
         return ClothingImageFetchResult(
           bytes: null,
@@ -424,18 +1084,10 @@ class ClothingImageService {
       final apiSearchEngine = response.headers['x-search-engine']?.trim();
       final rawResultIndex = response.headers['x-result-index']?.trim();
       final apiResultIndex = int.tryParse(rawResultIndex ?? '');
-      final sourceHost = sourceImageUrl == null
-          ? null
-          : Uri.tryParse(sourceImageUrl)?.host;
 
       _terminalDebug(
-        'Image request succeeded: $uri after ${elapsedMs}ms (${response.bodyBytes.length} bytes)',
-      );
-      _terminalDebug(
-        'Image API debug: search_query="${apiSearchQuery ?? "-"}", '
-        'search_engine="${apiSearchEngine ?? "-"}", '
-        'source_url="${sourceImageUrl ?? "-"}", source_host="${sourceHost ?? "-"}", '
-        'result_index=${apiResultIndex ?? -1}',
+        'External image API succeeded: $uri after ${elapsedMs}ms '
+        '(${response.bodyBytes.length} bytes)',
       );
       return ClothingImageFetchResult(
         bytes: response.bodyBytes,
@@ -470,67 +1122,40 @@ class ClothingImageService {
     }
   }
 
-  Future<_RankedIndex?> _bestResultIndexForBase({
-    required String baseUrl,
+  Future<ClothingImageFetchResult?> _fetchFromExternalApi({
     required String name,
     required String type,
-    int? preferredIndex,
+    int? index,
   }) async {
-    try {
-      final searchUri = _buildSearchUriForBase(
-        baseUrl: baseUrl,
-        name: name,
-        type: type,
-      );
-      final response = await http
-          .get(searchUri, headers: _jsonHeaders)
-          .timeout(_metadataTimeout);
-      if (response.statusCode != 200) return null;
+    if (_candidateBaseUrls.isEmpty) return null;
 
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) return null;
-      final resultsRaw = decoded['results'];
-      if (resultsRaw is! List) return null;
+    final directIndices = <int>{
+      if (index != null && index >= 0) index else 0,
+      if (index == null) 1,
+    }.toList();
 
-      final positives = <String>[
-        ..._typeKeywords(name, type),
-        ..._nameKeywords(name),
-      ];
-      final negatives = _negativeKeywords(name, type);
-
-      int? bestIndex;
-      var bestScore = -1 << 30;
-      for (final raw in resultsRaw) {
-        if (raw is! Map<String, dynamic>) continue;
-        final idxRaw = raw['index'];
-        final imageUrl = raw['image_url']?.toString() ?? '';
-        if (idxRaw is! int || imageUrl.isEmpty) continue;
-        var score = _scoreImageUrl(
-          imageUrl: imageUrl,
+    ClothingImageFetchResult? lastResult;
+    for (var baseIndex = 0; baseIndex < _candidateBaseUrls.length; baseIndex++) {
+      final base = _candidateBaseUrls[baseIndex];
+      final timeout = baseIndex == 0
+          ? _primaryRequestTimeout
+          : _secondaryRequestTimeout;
+      for (final directIndex in directIndices) {
+        final uri = buildImageUriForBase(
+          baseUrl: base,
+          name: name,
           type: type,
-          positives: positives,
-          negatives: negatives,
+          index: directIndex,
         );
-        if (preferredIndex != null && preferredIndex == idxRaw) {
-          score += 1;
-        }
-        if (score > bestScore) {
-          bestScore = score;
-          bestIndex = idxRaw;
-        }
+        final result = await _tryFetchImageFromExternalUri(
+          uri: uri,
+          timeout: timeout,
+        );
+        if (result.isSuccess) return result;
+        lastResult = result;
       }
-
-      if (bestIndex != null) {
-        return _RankedIndex(index: bestIndex, score: bestScore);
-      }
-      return null;
-    } catch (e) {
-      developer.log(
-        'Search metadata failed for $baseUrl ($name/$type): $e',
-        name: 'ClothingImageService',
-      );
-      return null;
     }
+    return lastResult;
   }
 
   String? _extractApiDetail(http.Response response) {
@@ -625,7 +1250,7 @@ class ClothingImageService {
   }) async {
     final uri = _fallbackImageUri(name: name, type: type);
     try {
-      final response = await http
+      final response = await _client
           .get(uri, headers: _imageHeaders)
           .timeout(_fallbackTimeout);
 
@@ -649,6 +1274,7 @@ class ClothingImageService {
   Future<ClothingImageFetchResult> fetchClothingImage({
     required String name,
     required String type,
+    String? audience,
     int? index,
     bool? allowGenericFallback,
     bool skipMetadataSearch = false,
@@ -657,118 +1283,85 @@ class ClothingImageService {
     final normalizedType = _normalizedType(name, type);
     final fallbackAllowed = allowGenericFallback ?? _allowGenericFallback;
     final minScore = minConfidenceScore < 0 ? 0 : minConfidenceScore;
-    final baseUrls = _candidateBaseUrls;
-    String? lastError;
-    Uri? lastUri;
-    int? lastStatusCode;
-    final directIndices = <int>{
-      if (index != null && index >= 0) index else 0,
-      if (index == null) 1,
-    }.toList();
+    final qualifiedName = _audienceQualifiedName(name, audience);
+    final requestUri = _internalImageUri(
+      name: qualifiedName,
+      type: normalizedType,
+      index: index,
+    );
 
     developer.log(
-      'Starting image lookup: name="$name", type="$type", normalizedType="$normalizedType", bases=${baseUrls.join(", ")}',
+      'Starting internal image lookup: name="$name", type="$type", '
+      'normalizedType="$normalizedType"',
       name: 'ClothingImageService',
     );
 
-    // Fast path: use the image endpoint directly.
-    // The backend already does its own Bing/DDG/Google lookup and streams
-    // the best image, so we do not need to call the metadata search endpoint
-    // before every image request.
-    for (var baseIndex = 0; baseIndex < baseUrls.length; baseIndex++) {
-      final base = baseUrls[baseIndex];
-      final timeout = baseIndex == 0
-          ? _primaryRequestTimeout
-          : _secondaryRequestTimeout;
-      for (final directIndex in directIndices) {
-        final uri = buildImageUriForBase(
-          baseUrl: base,
-          name: name,
-          type: normalizedType,
-          index: directIndex,
-        );
-        final result = await _tryFetchImageFromUri(uri: uri, timeout: timeout);
-        if (result.isSuccess) return result;
-        lastError = result.error;
-        lastUri = result.requestUri;
-        lastStatusCode = result.statusCode;
-      }
+    if (_useExternalApi) {
+      final external = await _fetchFromExternalApi(
+        name: qualifiedName,
+        type: normalizedType,
+        index: index,
+      );
+      if (external != null && external.isSuccess) return external;
     }
 
-    if (skipMetadataSearch) {
-      if (fallbackAllowed) {
-        final fallbackBytes = await _fetchFallbackImageBytes(
-          name: name,
+    String? lastError;
+    try {
+      final query = _buildQuery(name, normalizedType, audience: audience);
+      final search = await _searchImages(
+        query,
+        maxResults: skipMetadataSearch ? 4 : 10,
+      );
+
+      if (search.hits.isEmpty) {
+        lastError = 'No images found for "$query"';
+      } else {
+        final selection = await _downloadFirstValidImage(
+          hits: search.hits,
+          name: qualifiedName,
           type: normalizedType,
+          preferredIndex: index,
+          maxAttempts: skipMetadataSearch ? 3 : null,
+          minConfidenceScore: minScore,
         );
-        if (fallbackBytes != null) {
-          developer.log(
-            'Using fast fallback image for "$normalizedType" (skipMetadataSearch=true). '
-            'Last error: ${lastError ?? "n/a"}',
-            name: 'ClothingImageService',
+
+        final image = selection.image;
+        if (image != null) {
+          _terminalDebug(
+            'Internal image lookup succeeded via ${search.engine}: '
+            '${image.sourceUrl} (${image.bytes.length} bytes)',
           );
           return ClothingImageFetchResult(
-            bytes: fallbackBytes,
-            requestUri: _fallbackImageUri(name: name, type: normalizedType),
+            bytes: image.bytes,
+            requestUri: _internalImageUri(
+              name: name,
+              type: normalizedType,
+              index: image.resultIndex,
+            ),
             statusCode: 200,
-            error: null,
-            isGenericFallback: true,
+            sourceImageUrl: image.sourceUrl,
+            apiSearchQuery: search.query,
+            apiSearchEngine: search.engine,
+            apiResultIndex: image.resultIndex,
+            isGenericFallback: false,
           );
         }
+        lastError = selection.error;
       }
-
-      return ClothingImageFetchResult(
-        bytes: null,
-        requestUri: lastUri,
-        statusCode: lastStatusCode,
-        error: lastError ?? 'Unknown image API failure',
-      );
-    }
-
-    // Fallback path: use metadata ranking only if the direct endpoint failed.
-    for (var baseIndex = 0; baseIndex < baseUrls.length; baseIndex++) {
-      final base = baseUrls[baseIndex];
-      final timeout = baseIndex == 0
-          ? _primaryRequestTimeout
-          : _secondaryRequestTimeout;
-      final ranked = await _bestResultIndexForBase(
-        baseUrl: base,
-        name: name,
-        type: normalizedType,
-        preferredIndex: index,
-      );
-      if (ranked == null) {
-        lastError =
-            'No ranked search result for $name/$normalizedType on $base';
-        continue;
-      }
-      if (ranked.score < minScore) {
-        lastError =
-            'Low-confidence image match for $name/$normalizedType on $base (score=${ranked.score})';
-        continue;
-      }
-      final uri = buildImageUriForBase(
-        baseUrl: base,
-        name: name,
-        type: normalizedType,
-        index: ranked.index,
-      );
-      final result = await _tryFetchImageFromUri(uri: uri, timeout: timeout);
-      if (result.isSuccess) return result;
-      lastError = result.error;
-      lastUri = result.requestUri;
-      lastStatusCode = result.statusCode;
+    } catch (e) {
+      lastError = e.toString();
+      developer.log('Internal image lookup failed: $e', name: 'ClothingImageService');
     }
 
     if (fallbackAllowed) {
       final fallbackBytes = await _fetchFallbackImageBytes(
-        name: name,
-        type: normalizedType,
+          name: name,
+          type: normalizedType,
       );
       if (fallbackBytes != null) {
         developer.log(
-          'Primary API unavailable, served fallback image for type "$normalizedType". '
-          'Last error: ${lastError ?? "n/a"}',
+          'Primary image search unavailable, served fallback image for '
+          '"$normalizedType". Last error: ${lastError ?? "n/a"}',
           name: 'ClothingImageService',
         );
         return ClothingImageFetchResult(
@@ -783,21 +1376,93 @@ class ClothingImageService {
 
     return ClothingImageFetchResult(
       bytes: null,
-      requestUri: lastUri,
-      statusCode: lastStatusCode,
-      error: lastError ?? 'Unknown image API failure',
+      requestUri: requestUri,
+      statusCode: null,
+      error: lastError ?? 'Unknown internal image search failure',
     );
+  }
+
+  Future<ClothingImageHealthStatus> checkHealth({
+    String name = 'nike hoodie',
+    String type = 'hoodie',
+    String? audience,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    final normalizedType = _normalizedType(name, type);
+    final qualifiedName = _audienceQualifiedName(name, audience);
+    final query = _buildQuery(name, normalizedType, audience: audience);
+
+    try {
+      final search = await _searchImages(query, maxResults: 4);
+      if (search.hits.isEmpty) {
+        return ClothingImageHealthStatus(
+          isHealthy: false,
+          query: query,
+          searchEngine: search.engine,
+          resultCount: 0,
+          duration: stopwatch.elapsed,
+          checkedAt: DateTime.now(),
+          error: 'No image URLs returned by Bing, DuckDuckGo, or Google',
+        );
+      }
+
+      final selection = await _downloadFirstValidImage(
+        hits: search.hits,
+        name: qualifiedName,
+        type: normalizedType,
+        maxAttempts: 3,
+        minConfidenceScore: 0,
+        timeout: _healthDownloadTimeout,
+      );
+
+      final image = selection.image;
+      if (image == null) {
+        return ClothingImageHealthStatus(
+          isHealthy: false,
+          query: query,
+          searchEngine: search.engine,
+          resultCount: search.hits.length,
+          duration: stopwatch.elapsed,
+          checkedAt: DateTime.now(),
+          error: selection.error ?? 'Search returned URLs, but download failed',
+        );
+      }
+
+      return ClothingImageHealthStatus(
+        isHealthy: true,
+        query: query,
+        searchEngine: search.engine,
+        resultCount: search.hits.length,
+        sampleImageUrl: image.sourceUrl,
+        sampleBytes: image.bytes.length,
+        sampleMimeType: image.mimeType,
+        duration: stopwatch.elapsed,
+        checkedAt: DateTime.now(),
+      );
+    } catch (e) {
+      return ClothingImageHealthStatus(
+        isHealthy: false,
+        query: query,
+        searchEngine: 'none',
+        resultCount: 0,
+        duration: stopwatch.elapsed,
+        checkedAt: DateTime.now(),
+        error: e.toString(),
+      );
+    }
   }
 
   Future<Uint8List?> fetchClothingImageBytes({
     required String name,
     required String type,
     int? index,
+    String? audience,
     bool skipMetadataSearch = false,
   }) async {
     final result = await fetchClothingImage(
       name: name,
       type: type,
+      audience: audience,
       index: index,
       skipMetadataSearch: skipMetadataSearch,
     );
@@ -831,9 +1496,112 @@ class ClothingImageFetchResult {
   bool get isSuccess => bytes != null && bytes!.isNotEmpty;
 }
 
-class _RankedIndex {
+class ClothingImageHealthStatus {
+  const ClothingImageHealthStatus({
+    required this.isHealthy,
+    required this.query,
+    required this.resultCount,
+    required this.duration,
+    required this.checkedAt,
+    this.searchEngine,
+    this.sampleImageUrl,
+    this.sampleBytes,
+    this.sampleMimeType,
+    this.error,
+  });
+
+  final bool isHealthy;
+  final String query;
+  final String? searchEngine;
+  final int resultCount;
+  final String? sampleImageUrl;
+  final int? sampleBytes;
+  final String? sampleMimeType;
+  final String? error;
+  final Duration duration;
+  final DateTime checkedAt;
+
+  Map<String, dynamic> toMap() {
+    return <String, dynamic>{
+      'is_healthy': isHealthy,
+      'query': query,
+      'search_engine': searchEngine,
+      'result_count': resultCount,
+      'sample_image_url': sampleImageUrl,
+      'sample_bytes': sampleBytes,
+      'sample_mime_type': sampleMimeType,
+      'error': error,
+      'duration_ms': duration.inMilliseconds,
+      'checked_at': checkedAt.toIso8601String(),
+    };
+  }
+}
+
+class _SearchResult {
+  const _SearchResult({
+    required this.query,
+    required this.engine,
+    required this.hits,
+  });
+
+  final String query;
+  final String engine;
+  final List<_ImageSearchHit> hits;
+  List<String> get urls => hits.map((hit) => hit.url).toList();
+}
+
+class _ImageSearchHit {
+  const _ImageSearchHit({
+    required this.url,
+    this.title,
+    this.pageUrl,
+    this.source,
+  });
+
+  final String url;
+  final String? title;
+  final String? pageUrl;
+  final String? source;
+}
+
+class _ImageCandidate {
+  const _ImageCandidate({
+    required this.index,
+    required this.hit,
+    required this.score,
+  });
+
   final int index;
+  final _ImageSearchHit hit;
   final int score;
 
-  const _RankedIndex({required this.index, required this.score});
+  String get url => hit.url;
+}
+
+class _DownloadedImage {
+  const _DownloadedImage({
+    required this.bytes,
+    required this.mimeType,
+    required this.sourceUrl,
+    required this.resultIndex,
+    required this.score,
+  });
+
+  final Uint8List bytes;
+  final String mimeType;
+  final String sourceUrl;
+  final int resultIndex;
+  final int score;
+}
+
+class _DownloadSelection {
+  const _DownloadSelection({
+    required this.attempts,
+    this.image,
+    this.error,
+  });
+
+  final int attempts;
+  final _DownloadedImage? image;
+  final String? error;
 }

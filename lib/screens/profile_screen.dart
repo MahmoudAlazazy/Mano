@@ -299,7 +299,6 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  // ── Build ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final globalProfile = context.watch<ProfileProvider>().profile;
@@ -317,36 +316,40 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     return Scaffold(
       backgroundColor: AppColors.background,
-
-      // ── AppBar ────────────────────────────────────────────────
       appBar: AppBar(
-        backgroundColor:          AppColors.background,
-        elevation:                0,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         automaticallyImplyLeading: false,
-        centerTitle:              true,
+        centerTitle: false,
+        titleSpacing: AppSpacing.md,
         title: const Text(
           'Body Profile',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
         ),
         actions: [
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             child: _isSaved
                 ? Container(
-                    key:     const ValueKey('saved'),
-                    margin:  const EdgeInsets.only(right: AppSpacing.md),
+                    key: const ValueKey('saved'),
+                    margin: const EdgeInsets.only(right: AppSpacing.md),
                     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
                     decoration: BoxDecoration(
-                      color:        const Color(0xFFE8F5E9),
+                      color: const Color(0xFFE8F5E9),
                       borderRadius: BorderRadius.circular(AppRadius.full),
+                      border: Border.all(color: const Color(0xFFB8DEC0)),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.check_rounded, color: Colors.green, size: 14),
                         SizedBox(width: 4),
-                        Text('Saved',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green)),
+                        Text(
+                          'Saved',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green),
+                        ),
                       ],
                     ),
                   )
@@ -354,8 +357,6 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
         ],
       ),
-
-      // ── Body ──────────────────────────────────────────────────
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: SlideTransition(
@@ -364,78 +365,110 @@ class _ProfileScreenState extends State<ProfileScreen>
             opacity: _fadeAnim,
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.xxl + AppSpacing.md,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: AppSpacing.md),
-
-                  // ── Error banner ───────────────────────────
                   if (_errorMessage != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.md),
                       child: Container(
                         padding: const EdgeInsets.all(AppSpacing.md),
                         decoration: BoxDecoration(
-                          color:        AppColors.error.withValues(alpha: 0.1),
+                          color: AppColors.error.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(AppRadius.md),
-                          border:       Border.all(color: AppColors.error),
+                          border: Border.all(color: AppColors.error),
                         ),
-                        child: Row(children: [
-                          Icon(Icons.error_outline, color: AppColors.error),
-                          SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(_errorMessage!,
-                                style: TextStyle(color: AppColors.error, fontSize: 13)),
-                          ),
-                        ]),
+                        child: Row(
+                          children: [
+                            Icon(Icons.error_outline, color: AppColors.error),
+                            SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: TextStyle(color: AppColors.error, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-
-                  // ── Avatar banner ──────────────────────────
                   _AvatarBanner(
-                    profile:        _editProfile,
-                    isEditing:      _isEditing,
+                    profile: _editProfile,
+                    isEditing: _isEditing,
                     isUploadingImg: _isUploadingImg,
                     nameController: _nameCtrl,
-                    onPickImage:    _pickImage,
-                    onToggleEdit:   _toggleEditMode,
+                    onPickImage: _pickImage,
+                    onToggleEdit: _toggleEditMode,
                   ),
                   const SizedBox(height: AppSpacing.md),
-
-                  // ── Measurements ───────────────────────────
+                  _ProfileHighlights(
+                    isEditing: _isEditing,
+                    colorsCount: _editProfile.favoriteColors.length,
+                    occasionsCount: _editProfile.occasions.length,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
                   _SectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _sectionTitle('Measurements'),
+                        const _SectionHeader(
+                          icon: Icons.straighten_rounded,
+                          title: 'Measurements',
+                          subtitle: 'Use your latest body measurements',
+                        ),
                         const SizedBox(height: AppSpacing.md),
-                        Row(children: [
-                          Expanded(child: _MeasurementField(label: 'Height (cm)', controller: _heightCtrl, hint: '170', enabled: _isEditing)),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(child: _MeasurementField(label: 'Weight (kg)', controller: _weightCtrl, hint: '65',  enabled: _isEditing)),
-                        ]),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _MeasurementField(
+                                label: 'Height',
+                                controller: _heightCtrl,
+                                hint: '170',
+                                unit: 'cm',
+                                enabled: _isEditing,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Expanded(
+                              child: _MeasurementField(
+                                label: 'Weight',
+                                controller: _weightCtrl,
+                                hint: '65',
+                                unit: 'kg',
+                                enabled: _isEditing,
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
-
-                  // ── Body Type ──────────────────────────────
                   _SectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _sectionTitle('Body Type'),
+                        const _SectionHeader(
+                          icon: Icons.accessibility_new_rounded,
+                          title: 'Body Type',
+                          subtitle: 'Choose what feels closest to you',
+                        ),
                         const SizedBox(height: AppSpacing.md),
-                        Wrap(
-                          spacing:    AppSpacing.sm,
-                          runSpacing: AppSpacing.sm,
-                          children: UserProfile.bodyTypeOptions.map((type) {
+                        _horizontalScroller(
+                          UserProfile.bodyTypeOptions.map((type) {
                             return _ChipSelector(
-                              label:      type,
+                              label: type,
                               isSelected: type == _editProfile.bodyType,
-                              isEnabled:  _isEditing,
-                              onTap:      () => setState(() => _editProfile = _editProfile.copyWith(bodyType: type)),
+                              isEnabled: _isEditing,
+                              onTap: () => setState(
+                                () => _editProfile = _editProfile.copyWith(bodyType: type),
+                              ),
                             );
                           }).toList(),
                         ),
@@ -443,23 +476,25 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
-
-                  // ── Skin Tone ──────────────────────────────
                   _SectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _sectionTitle('Skin Tone'),
+                        const _SectionHeader(
+                          icon: Icons.wb_sunny_outlined,
+                          title: 'Skin Tone',
+                          subtitle: 'Helps improve outfit and color matching',
+                        ),
                         const SizedBox(height: AppSpacing.md),
-                        Wrap(
-                          spacing:    AppSpacing.sm,
-                          runSpacing: AppSpacing.sm,
-                          children: UserProfile.skinTones.map((tone) {
+                        _horizontalScroller(
+                          UserProfile.skinTones.map((tone) {
                             return _ChipSelector(
-                              label:      tone,
+                              label: tone,
                               isSelected: tone == _editProfile.skinTone,
-                              isEnabled:  _isEditing,
-                              onTap:      () => setState(() => _editProfile = _editProfile.copyWith(skinTone: tone)),
+                              isEnabled: _isEditing,
+                              onTap: () => setState(
+                                () => _editProfile = _editProfile.copyWith(skinTone: tone),
+                              ),
                             );
                           }).toList(),
                         ),
@@ -467,54 +502,74 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
-
-                  // ── Favourite Colors ───────────────────────
                   _SectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            _sectionTitle('Favorite Colors'),
-                            Text('${_editProfile.favoriteColors.length} selected',
-                                style: AppTextStyles.bodySmall),
+                            const Expanded(
+                              child: _SectionHeader(
+                                icon: Icons.palette_outlined,
+                                title: 'Favorite Colors',
+                                subtitle: 'Pick shades you wear most often',
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.sm,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primarySoft,
+                                borderRadius: BorderRadius.circular(AppRadius.full),
+                              ),
+                              child: Text(
+                                '${_editProfile.favoriteColors.length} selected',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: AppSpacing.md),
-                        Wrap(
-                          spacing:    AppSpacing.md,
-                          runSpacing: AppSpacing.md,
-                          children: UserProfile.colorSwatches.map((swatch) {
+                        _horizontalScroller(
+                          UserProfile.colorSwatches.map((swatch) {
                             return _ColorSwatchButton(
-                              swatch:     swatch,
+                              swatch: swatch,
                               isSelected: _editProfile.favoriteColors.contains(swatch.name),
-                              isEnabled:  _isEditing,
-                              onTap:      () => _toggleColor(swatch.name),
+                              isEnabled: _isEditing,
+                              onTap: () => _toggleColor(swatch.name),
                             );
                           }).toList(),
+                          gap: AppSpacing.md,
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
-
-                  // ── Occasion ───────────────────────────────
                   _SectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _sectionTitle('Occasion'),
+                        const _SectionHeader(
+                          icon: Icons.event_available_rounded,
+                          title: 'Occasion',
+                          subtitle: 'Tell us where you usually dress for',
+                        ),
                         const SizedBox(height: AppSpacing.md),
                         Wrap(
-                          spacing:    AppSpacing.sm,
+                          spacing: AppSpacing.sm,
                           runSpacing: AppSpacing.sm,
                           children: UserProfile.occasionOptions.map((occ) {
                             return _ChipSelector(
-                              label:      occ,
+                              label: occ,
                               isSelected: _editProfile.occasions.contains(occ),
-                              isEnabled:  _isEditing,
-                              onTap:      () => _toggleOccasion(occ),
+                              isEnabled: _isEditing,
+                              onTap: () => _toggleOccasion(occ),
                             );
                           }).toList(),
                         ),
@@ -522,23 +577,27 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
-
-                  // ── Style Personality ──────────────────────
                   _SectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _sectionTitle('Style Personality'),
+                        const _SectionHeader(
+                          icon: Icons.style_outlined,
+                          title: 'Style Personality',
+                          subtitle: 'Select the vibe that represents your style',
+                        ),
                         const SizedBox(height: AppSpacing.md),
                         Wrap(
-                          spacing:    AppSpacing.sm,
+                          spacing: AppSpacing.sm,
                           runSpacing: AppSpacing.sm,
                           children: UserProfile.styleOptions.map((style) {
                             return _ChipSelector(
-                              label:      style,
+                              label: style,
                               isSelected: style == _editProfile.stylePersonality,
-                              isEnabled:  _isEditing,
-                              onTap:      () => setState(() => _editProfile = _editProfile.copyWith(stylePersonality: style)),
+                              isEnabled: _isEditing,
+                              onTap: () => setState(
+                                () => _editProfile = _editProfile.copyWith(stylePersonality: style),
+                              ),
                             );
                           }).toList(),
                         ),
@@ -546,47 +605,60 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.lg),
-
-                  // ── Save button ────────────────────────────
                   if (_isEditing)
-                    AnimatedOpacity(
-                      opacity:  1.0,
-                      duration: const Duration(milliseconds: 300),
-                      child: SizedBox(
-                        width:  double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: _isSaving ? null : _onSave,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:         AppColors.primary,
-                            disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.6),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
-                            elevation: 0,
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _isSaving ? null : _onSave,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                           ),
-                          child: _isSaving
-                              ? const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    SizedBox(width: 20, height: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white)),
-                                    SizedBox(width: AppSpacing.sm),
-                                    Text('Saving…',
-                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
-                                  ],
-                                )
-                              : const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.save_rounded, color: Colors.white, size: 20),
-                                    SizedBox(width: AppSpacing.sm),
-                                    Text('Save Profile',
-                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-                                  ],
-                                ),
+                          elevation: 0,
                         ),
+                        child: _isSaving
+                            ? const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  SizedBox(width: AppSpacing.sm),
+                                  Text(
+                                    'Saving...',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.save_rounded, color: Colors.white, size: 20),
+                                  SizedBox(width: AppSpacing.sm),
+                                  Text(
+                                    'Save Profile',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
                       ),
                     ),
-
                   const SizedBox(height: AppSpacing.xxl),
                   if (isAdmin)
                     SizedBox(
@@ -594,33 +666,27 @@ class _ProfileScreenState extends State<ProfileScreen>
                       height: 56,
                       child: OutlinedButton.icon(
                         onPressed: () {
-                          Navigator.pushNamed(
-                            context,
-                            app.AppRoutes.adminDashboard,
-                          );
+                          Navigator.pushNamed(context, app.AppRoutes.adminDashboard);
                         },
                         icon: const Icon(Icons.admin_panel_settings_rounded),
                         label: const Text(
                           'Open Admin Dashboard',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
-                  if (isAdmin) const SizedBox(height: AppSpacing.md),                  // ?? Logout button ────────────────────────────
-                    SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          await context.read<AuthProvider>().signOut();
-                          context.read<ProfileProvider>().clear();
-                          if (mounted) {
-                            Navigator.pushReplacementNamed(context, app.AppRoutes.login);
-                          }
-                        },
+                  if (isAdmin) const SizedBox(height: AppSpacing.md),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        await context.read<AuthProvider>().signOut();
+                        context.read<ProfileProvider>().clear();
+                        if (mounted) {
+                          Navigator.pushReplacementNamed(context, app.AppRoutes.login);
+                        }
+                      },
                       icon: const Icon(Icons.logout_rounded, color: Colors.white, size: 20),
                       label: const Text(
                         'Logout',
@@ -640,24 +706,32 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.xxl),
                 ],
               ),
             ),
           ),
         ),
       ),
-
       bottomNavigationBar: const AppBottomNavBar(currentIndex: 4),
     );
   }
 
-  Widget _sectionTitle(String text) => Text(
-        text,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-      );
+  Widget _horizontalScroller(List<Widget> items, {double gap = AppSpacing.sm}) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          for (int i = 0; i < items.length; i++)
+            Padding(
+              padding: EdgeInsets.only(right: i == items.length - 1 ? 0 : gap),
+              child: items[i],
+            ),
+        ],
+      ),
+    );
+  }
 }
-
 // ─────────────────────────────────────────────────────────────────
 // Section Card
 // ─────────────────────────────────────────────────────────────────
@@ -668,13 +742,18 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:   double.infinity,
+      width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color:        AppColors.surface,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.75)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: child,
@@ -685,6 +764,140 @@ class _SectionCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────
 // Chip Selector
 // ─────────────────────────────────────────────────────────────────
+class _SectionHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _SectionHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: AppColors.primarySoft,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
+          child: Icon(icon, size: 18, color: AppColors.primary),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileHighlights extends StatelessWidget {
+  final bool isEditing;
+  final int colorsCount;
+  final int occasionsCount;
+
+  const _ProfileHighlights({
+    required this.isEditing,
+    required this.colorsCount,
+    required this.occasionsCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _HighlightChip(
+            icon: Icons.palette_outlined,
+            value: '$colorsCount colors',
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: _HighlightChip(
+            icon: Icons.event_available_rounded,
+            value: '$occasionsCount occasions',
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: _HighlightChip(
+            icon: isEditing ? Icons.edit_rounded : Icons.verified_rounded,
+            value: isEditing ? 'Edit mode' : 'Ready',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HighlightChip extends StatelessWidget {
+  final IconData icon;
+  final String value;
+
+  const _HighlightChip({
+    required this.icon,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppColors.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              value,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChipSelector extends StatelessWidget {
   final String       label;
   final bool         isSelected;
@@ -708,7 +921,7 @@ class _ChipSelector extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? (isEnabled ? AppColors.primary : AppColors.primary.withValues(alpha: 0.7))
-              : AppColors.background,
+              : AppColors.surfaceAlt,
           borderRadius: BorderRadius.circular(AppRadius.full),
           border: Border.all(
             color: isSelected ? AppColors.primary : AppColors.border,
@@ -721,8 +934,8 @@ class _ChipSelector extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize:   13,
-            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
             color: isSelected
                 ? Colors.white
                 : AppColors.textPrimary.withValues(alpha: isEnabled ? 1 : 0.5),
@@ -740,12 +953,14 @@ class _MeasurementField extends StatelessWidget {
   final String                label;
   final TextEditingController controller;
   final String                hint;
+  final String                unit;
   final bool                  enabled;
 
   const _MeasurementField({
     required this.label,
     required this.controller,
     required this.hint,
+    required this.unit,
     required this.enabled,
   });
 
@@ -772,11 +987,29 @@ class _MeasurementField extends StatelessWidget {
             hintText:  hint,
             hintStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textHint),
             filled:    true,
-            fillColor: enabled ? AppColors.background : AppColors.background.withValues(alpha: 0.5),
-            border:         OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md), borderSide: const BorderSide(color: AppColors.border)),
-            enabledBorder:  OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md), borderSide: const BorderSide(color: AppColors.border)),
-            focusedBorder:  OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
-            disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.md), borderSide: BorderSide(color: AppColors.border.withValues(alpha: 0.5))),
+            fillColor: enabled ? AppColors.surfaceAlt : AppColors.surfaceAlt.withValues(alpha: 0.5),
+            suffixText: unit,
+            suffixStyle: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primary.withValues(alpha: enabled ? 0.95 : 0.5),
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderSide: const BorderSide(color: AppColors.primary, width: 1.6),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderSide: BorderSide(color: AppColors.border.withValues(alpha: 0.5)),
+            ),
             contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.md),
           ),
         ),
@@ -871,15 +1104,16 @@ class _AvatarBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:   double.infinity,
+      width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.primary, AppColors.primary.withValues(alpha: 0.75)],
-          begin:  Alignment.topLeft,
-          end:    Alignment.bottomRight,
+          colors: [AppColors.primaryLight, AppColors.primary],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
         boxShadow: [
           BoxShadow(color: AppColors.primary.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6)),
         ],
@@ -965,8 +1199,10 @@ class _AvatarBanner extends StatelessWidget {
                     ),
                   )
                 else
-                  Text(profile.name,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+                  Text(
+                    profile.name,
+                    style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: Colors.white),
+                  ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
                   '${profile.height.toStringAsFixed(0)} cm  •  ${profile.weight.toStringAsFixed(0)} kg',
@@ -988,9 +1224,10 @@ class _AvatarBanner extends StatelessWidget {
               padding: const EdgeInsets.all(8),
               margin:  const EdgeInsets.only(left: 8),
               decoration: BoxDecoration(
-                color:        isEditing
+                color: isEditing
                     ? Colors.white.withValues(alpha: 0.3)
                     : Colors.white.withValues(alpha: 0.15),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Icon(

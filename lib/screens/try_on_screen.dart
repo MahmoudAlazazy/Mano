@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
@@ -34,6 +35,7 @@ class _TryOnScreenState extends State<TryOnScreen> {
   List<Map<String, dynamic>> _selectedWardrobeItems = [];
   List<Map<String, dynamic>> _uploadedGarmentItems = [];
   bool _isGenerating = false;
+  bool _isSavingResult = false;
   bool _hasResult = false;
   Uint8List? _resultBytes;
   String? _errorMessage;
@@ -43,6 +45,7 @@ class _TryOnScreenState extends State<TryOnScreen> {
   String? _presetOutfitTitle;
   String? _generationStatus;
   XFile? _customAvatarImage;
+  bool _hideAvatarSelectionCard = false;
   final AdminApiService _adminApi = AdminApiService();
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -116,6 +119,7 @@ class _TryOnScreenState extends State<TryOnScreen> {
   void _resetGeneratedPreview() {
     _hasResult = false;
     _resultBytes = null;
+    _isSavingResult = false;
     _errorMessage = null;
   }
 
@@ -153,6 +157,7 @@ class _TryOnScreenState extends State<TryOnScreen> {
       setState(() {
         _selectedAvatarSource = _AvatarSource.upload;
         _customAvatarImage = image;
+        _hideAvatarSelectionCard = true;
         _resetGeneratedPreview();
       });
     } catch (e) {
@@ -163,6 +168,7 @@ class _TryOnScreenState extends State<TryOnScreen> {
   void _clearCustomAvatarImage() {
     setState(() {
       _customAvatarImage = null;
+      _hideAvatarSelectionCard = false;
       _selectedAvatarSource = _AvatarSource.preset;
       _resetGeneratedPreview();
     });
@@ -171,6 +177,9 @@ class _TryOnScreenState extends State<TryOnScreen> {
   void _selectAvatarSource(_AvatarSource source) {
     setState(() {
       _selectedAvatarSource = source;
+      if (source == _AvatarSource.preset) {
+        _hideAvatarSelectionCard = false;
+      }
       _resetGeneratedPreview();
     });
   }
@@ -427,6 +436,144 @@ class _TryOnScreenState extends State<TryOnScreen> {
     return false;
   }
 
+  String _extensionFromImageBytes(Uint8List bytes) {
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return 'png';
+    }
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return 'jpg';
+    }
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x47 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x38) {
+      return 'gif';
+    }
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return 'webp';
+    }
+    if (bytes.length >= 2 && bytes[0] == 0x42 && bytes[1] == 0x4D) {
+      return 'bmp';
+    }
+    return 'jpg';
+  }
+
+  bool _isSaveResultSuccessful(dynamic result) {
+    if (result is Map) {
+      final status = result['isSuccess'] ?? result['success'];
+      if (status is bool) return status;
+      if (status is num) return status != 0;
+      if (status is String) {
+        final normalized = status.trim().toLowerCase();
+        if (normalized == 'true' ||
+            normalized == '1' ||
+            normalized == 'success') {
+          return true;
+        }
+      }
+
+      final filePath = result['filePath'] ?? result['file_path'] ?? result['path'];
+      if (filePath is String && filePath.trim().isNotEmpty) return true;
+      return false;
+    }
+
+    if (result is bool) return result;
+    if (result is String) return result.trim().isNotEmpty;
+    return false;
+  }
+
+  String? _extractSaveError(dynamic result) {
+    if (result is! Map) return null;
+    final error = result['errorMessage'] ?? result['error'] ?? result['message'];
+    if (error == null) return null;
+    final text = error.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  void _showSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(message, style: const TextStyle(fontSize: 13)),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Future<void> _saveGeneratedImageHighQuality() async {
+    if (_isSavingResult) return;
+
+    final bytes = _resultBytes;
+    if (bytes == null || bytes.isEmpty) {
+      _showError('Generate an image first.');
+      return;
+    }
+
+    setState(() => _isSavingResult = true);
+    File? tempFile;
+    try {
+      final ext = _extensionFromImageBytes(bytes);
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      tempFile = File(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}mano_try_on_$ts.$ext',
+      );
+      await tempFile.writeAsBytes(bytes, flush: true);
+
+      final saveResult = await ImageGallerySaverPlus.saveFile(
+        tempFile.path,
+        name: 'mano_try_on_$ts',
+        isReturnPathOfIOS: true,
+      );
+
+      if (_isSaveResultSuccessful(saveResult)) {
+        _showSuccess('Image downloaded in high quality to your gallery.');
+      } else {
+        final error = _extractSaveError(saveResult);
+        _showError(error ?? 'Unable to download image to gallery.');
+      }
+    } catch (e) {
+      _showError('Unable to download image: $e');
+    } finally {
+      if (tempFile != null) {
+        try {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        } catch (_) {}
+      }
+      if (mounted) {
+        setState(() => _isSavingResult = false);
+      }
+    }
+  }
+
   Uint8List? _tryDecodeBase64Image(String value) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return null;
@@ -628,6 +775,7 @@ class _TryOnScreenState extends State<TryOnScreen> {
       _generationStatus = 'Loading avatar...';
       _hasResult = false;
       _resultBytes = null;
+      _isSavingResult = false;
     });
 
     Directory? tempDir;
@@ -662,7 +810,7 @@ class _TryOnScreenState extends State<TryOnScreen> {
       }
 
       if (!mounted) return;
-      setState(() => _generationStatus = 'Sending images to Generate API...');
+      setState(() => _generationStatus = '  Generate Image...');
 
       var result = await _adminApi.generate(
         avatarPath: avatarPath,
@@ -698,6 +846,7 @@ class _TryOnScreenState extends State<TryOnScreen> {
       setState(() {
         _resultBytes = imageBytes;
         _hasResult = true;
+        _isSavingResult = false;
         _generationStatus = '$outfitTitle applied successfully!';
       });
     } catch (e) {
@@ -753,7 +902,10 @@ class _TryOnScreenState extends State<TryOnScreen> {
       body: Column(
         children: [
           _buildHeader(context),
-          _buildAvatarSelection(),
+          if (_hideAvatarSelectionCard)
+            _buildAvatarCardRestoreAction()
+          else
+            _buildAvatarSelection(),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
@@ -812,9 +964,32 @@ class _TryOnScreenState extends State<TryOnScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Choose Avatar',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            Row(
+              children: [
+                const Text(
+                  'Choose Avatar',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                const Spacer(),
+                if (_selectedAvatarSource == _AvatarSource.upload &&
+                    _hasCustomAvatar)
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _hideAvatarSelectionCard = true;
+                      });
+                    },
+                    style: TextButton.styleFrom(
+                      visualDensity:
+                          const VisualDensity(horizontal: -2, vertical: -2),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                    ),
+                    icon: const Icon(Icons.visibility_off_rounded, size: 16),
+                    label: const Text('Hide Details'),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -929,10 +1104,11 @@ class _TryOnScreenState extends State<TryOnScreen> {
 
   Widget _buildCustomAvatarPicker() {
     final customAvatarPath = _customAvatarImage?.path;
+    final hasUploadedAvatar = _hasCustomAvatar && customAvatarPath != null;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.primarySoft,
         borderRadius: BorderRadius.circular(18),
@@ -944,81 +1120,117 @@ class _TryOnScreenState extends State<TryOnScreen> {
           Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  width: 68,
-                  height: 68,
+                  width: 54,
+                  height: 54,
                   color: Colors.white,
-                  child: _hasCustomAvatar && customAvatarPath != null
+                  child: hasUploadedAvatar
                       ? Image.file(
-                          File(customAvatarPath),
+                          File(customAvatarPath!),
                           fit: BoxFit.cover,
                           errorBuilder: (_, _, _) {
                             return const Icon(
                               Icons.person_outline_rounded,
                               color: AppColors.primary,
-                              size: 30,
+                              size: 26,
                             );
                           },
                         )
                       : const Icon(
                           Icons.person_outline_rounded,
                           color: AppColors.primary,
-                          size: 30,
+                          size: 26,
                         ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _hasCustomAvatar && customAvatarPath != null
-                          ? _displayNameFromPath(customAvatarPath)
+                      hasUploadedAvatar
+                          ? _displayNameFromPath(customAvatarPath!)
                           : 'No custom avatar uploaded yet',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Use a clear full-body photo for better try-on results.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                    ),
+                    if (!hasUploadedAvatar) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Use a clear full-body photo for better try-on results.',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _pickCustomAvatarImage,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    visualDensity:
+                        const VisualDensity(horizontal: -2, vertical: -2),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                   icon: Icon(
-                    _hasCustomAvatar
+                    hasUploadedAvatar
                         ? Icons.autorenew_rounded
                         : Icons.file_upload_outlined,
                   ),
                   label: Text(
-                    _hasCustomAvatar ? 'Change Photo' : 'Upload Photo',
+                    hasUploadedAvatar ? 'Change Photo' : 'Upload Photo',
                   ),
                 ),
               ),
               const SizedBox(width: 10),
-              if (_hasCustomAvatar)
+              if (hasUploadedAvatar)
                 TextButton(
                   onPressed: _clearCustomAvatarImage,
+                  style: TextButton.styleFrom(
+                    visualDensity:
+                        const VisualDensity(horizontal: -2, vertical: -2),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                   child: const Text('Use Presets'),
                 ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAvatarCardRestoreAction() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: () {
+            setState(() {
+              _hideAvatarSelectionCard = false;
+            });
+          },
+          style: TextButton.styleFrom(
+            visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          ),
+          icon: const Icon(Icons.visibility_rounded, size: 16),
+          label: const Text('Show Details'),
+        ),
       ),
     );
   }
@@ -1171,11 +1383,59 @@ class _TryOnScreenState extends State<TryOnScreen> {
           Image.memory(_resultBytes!, fit: BoxFit.contain),
           Positioned(
             top: 12,
+            left: 12,
+            child: GestureDetector(
+              onTap: _isSavingResult ? null : _saveGeneratedImageHighQuality,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: _isSavingResult ? 0.8 : 1,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_isSavingResult)
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      else
+                        const Icon(
+                          Icons.download_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      const SizedBox(width: 5),
+                      Text(
+                        _isSavingResult ? 'Saving...' : 'Download HD',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 12,
             right: 12,
             child: GestureDetector(
               onTap: () => setState(() {
                 _hasResult = false;
                 _resultBytes = null;
+                _isSavingResult = false;
               }),
               child: Container(
                 padding:

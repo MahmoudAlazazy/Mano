@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -28,7 +27,6 @@ class _HomeScreenState extends State<HomeScreen>
   late final AnimationController _controller;
   late final Animation<double> _fadeAnim;
   late final Animation<Offset> _slideAnim;
-  Timer? _greetingTimer;
   final WeatherService _weatherService = WeatherService();
   final ClothingImageService _clothingImageService = ClothingImageService();
   bool _isWeatherLoading = true;
@@ -43,6 +41,10 @@ class _HomeScreenState extends State<HomeScreen>
   List<_SuggestionItem> _liveSuggestions = [];
   List<_SuggestionItem> _savedSuggestions = [];
   String _savedOutfitTitle = 'Saved Outfit';
+  int _selectedAudience = 0;
+  double _lastTemperatureC = 24.0;
+
+  String get _audienceSearchValue => _selectedAudience == 0 ? 'men' : 'women';
 
   @override
   void initState() {
@@ -59,7 +61,6 @@ class _HomeScreenState extends State<HomeScreen>
 
     _loadWeather();
     _loadSavedOutfitSuggestions();
-    _startGreetingTicker();
 
     Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) _controller.forward();
@@ -68,17 +69,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
-    _greetingTimer?.cancel();
     _controller.dispose();
     super.dispose();
-  }
-
-  void _startGreetingTicker() {
-    _greetingTimer?.cancel();
-    _greetingTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (!mounted) return;
-      setState(() {});
-    });
   }
 
   Future<void> _loadSuggestionsForTemperature(double temperatureC) async {
@@ -97,6 +89,9 @@ class _HomeScreenState extends State<HomeScreen>
           final imageResult = await _clothingImageService.fetchClothingImage(
             name: seed.searchName,
             type: seed.type,
+            audience: _audienceSearchValue,
+            allowGenericFallback: false,
+            minConfidenceScore: 8,
           );
           firstApiError ??= imageResult.error;
           return _SuggestionItem(
@@ -139,70 +134,147 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  void _onAudienceSelected(int index) {
+    if (_selectedAudience == index) return;
+    setState(() => _selectedAudience = index);
+    _loadSuggestionsForTemperature(_lastTemperatureC);
+  }
+
   _SuggestionPlan _suggestionPlanForTemperature(double temperatureC) {
+    final isWomen = _selectedAudience == 1;
     if (temperatureC >= 28) {
+      if (isWomen) {
+        return _SuggestionPlan(
+          tip: 'Hot weather - Light women outfits',
+          items: const [
+            _SuggestionSeed(
+              searchName: 'ivory linen sleeveless blouse',
+              type: 'blouse',
+              label: 'Linen Blouse',
+              category: 'Top',
+              emoji: '\u{1F45A}',
+            ),
+            _SuggestionSeed(
+              searchName: 'beige high waisted summer shorts',
+              type: 'shorts',
+              label: 'Summer Shorts',
+              category: 'Bottom',
+              emoji: '\u{1FA73}',
+            ),
+            _SuggestionSeed(
+              searchName: 'tan flat summer sandals',
+              type: 'sandals',
+              label: 'Sandals',
+              category: 'Shoes',
+              emoji: '\u{1F461}',
+            ),
+            _SuggestionSeed(
+              searchName: 'straw tote bag',
+              type: 'bag',
+              label: 'Straw Tote',
+              category: 'Accessory',
+              emoji: '\u{1F45C}',
+            ),
+          ],
+        );
+      }
       return _SuggestionPlan(
-        tip: 'Hot weather - Light clothes',
+        tip: 'Hot weather - Light men outfits',
         items: const [
           _SuggestionSeed(
-            searchName: 'cotton t-shirt',
+            searchName: 'white cotton t-shirt',
             type: 'tshirt',
             label: 'T-shirt',
             category: 'Top',
             emoji: '\u{1F455}',
           ),
           _SuggestionSeed(
-            searchName: 'summer shorts',
+            searchName: 'beige chino shorts',
             type: 'shorts',
             label: 'Shorts',
             category: 'Bottom',
             emoji: '\u{1FA73}',
           ),
           _SuggestionSeed(
-            searchName: 'summer dress',
-            type: 'dress',
-            label: 'Dress',
-            category: 'One-piece',
-            emoji: '\u{1F457}',
+            searchName: 'white low top sneakers',
+            type: 'sneakers',
+            label: 'Sneakers',
+            category: 'Shoes',
+            emoji: '\u{1F45F}',
           ),
           _SuggestionSeed(
-            searchName: 'light top',
-            type: 'top',
-            label: 'Top',
-            category: 'Top',
-            emoji: '\u{1F45A}',
+            searchName: 'tortoise sunglasses',
+            type: 'sunglasses',
+            label: 'Sunglasses',
+            category: 'Accessory',
+            emoji: '\u{1F576}',
           ),
         ],
       );
     }
 
     if (temperatureC <= 18) {
+      if (isWomen) {
+        return _SuggestionPlan(
+          tip: 'Cool weather - Warm women layers',
+          items: const [
+            _SuggestionSeed(
+              searchName: 'cream knit turtleneck sweater',
+              type: 'sweater',
+              label: 'Knit Sweater',
+              category: 'Top',
+              emoji: '\u{1F9E5}',
+            ),
+            _SuggestionSeed(
+              searchName: 'dark straight leg jeans',
+              type: 'jeans',
+              label: 'Jeans',
+              category: 'Bottom',
+              emoji: '\u{1F456}',
+            ),
+            _SuggestionSeed(
+              searchName: 'camel wool wrap coat',
+              type: 'coat',
+              label: 'Coat',
+              category: 'Outerwear',
+              emoji: '\u{1F9E5}',
+            ),
+            _SuggestionSeed(
+              searchName: 'black leather ankle boots',
+              type: 'boots',
+              label: 'Ankle Boots',
+              category: 'Shoes',
+              emoji: '\u{1F97E}',
+            ),
+          ],
+        );
+      }
       return _SuggestionPlan(
-        tip: 'Cool weather - Add warm layers',
+        tip: 'Cool weather - Warm men layers',
         items: const [
           _SuggestionSeed(
-            searchName: 'fleece hoodie',
+            searchName: 'charcoal fleece hoodie',
             type: 'hoodie',
             label: 'Hoodie',
             category: 'Outerwear',
             emoji: '\u{1F9E5}',
           ),
           _SuggestionSeed(
-            searchName: 'denim jeans',
+            searchName: 'dark denim jeans',
             type: 'jeans',
             label: 'Jeans',
             category: 'Bottom',
             emoji: '\u{1F456}',
           ),
           _SuggestionSeed(
-            searchName: 'light jacket',
+            searchName: 'black light jacket',
             type: 'jacket',
             label: 'Jacket',
             category: 'Outerwear',
             emoji: '\u{1F9E5}',
           ),
           _SuggestionSeed(
-            searchName: 'ankle boots',
+            searchName: 'brown leather ankle boots',
             type: 'boots',
             label: 'Boots',
             category: 'Shoes',
@@ -212,25 +284,61 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
 
+    if (_selectedAudience == 1) {
+      return _SuggestionPlan(
+        tip: 'Mild weather - relaxed women layers',
+        items: const [
+          _SuggestionSeed(
+            searchName: 'white cotton button blouse',
+            type: 'blouse',
+            label: 'Blouse',
+            category: 'Top',
+            emoji: '\u{1F45A}',
+          ),
+          _SuggestionSeed(
+            searchName: 'sand wide leg trousers',
+            type: 'pants',
+            label: 'Trousers',
+            category: 'Bottom',
+            emoji: '\u{1F456}',
+          ),
+          _SuggestionSeed(
+            searchName: 'oatmeal cardigan sweater',
+            type: 'cardigan',
+            label: 'Cardigan',
+            category: 'Layer',
+            emoji: '\u{1F9E5}',
+          ),
+          _SuggestionSeed(
+            searchName: 'white fashion sneakers',
+            type: 'sneakers',
+            label: 'Sneakers',
+            category: 'Shoes',
+            emoji: '\u{1F45F}',
+          ),
+        ],
+      );
+    }
+
     return _SuggestionPlan(
-      tip: 'Mild weather - light layers work best',
+      tip: 'Mild weather - relaxed men layers',
       items: const [
         _SuggestionSeed(
-          searchName: 'casual shirt',
+          searchName: 'light blue casual shirt',
           type: 'shirt',
           label: 'Shirt',
           category: 'Top',
           emoji: '\u{1F454}',
         ),
         _SuggestionSeed(
-          searchName: 'chino pants',
+          searchName: 'navy chino pants',
           type: 'pants',
           label: 'Pants',
           category: 'Bottom',
           emoji: '\u{1F456}',
         ),
         _SuggestionSeed(
-          searchName: 'cardigan sweater',
+          searchName: 'gray cardigan sweater',
           type: 'cardigan',
           label: 'Cardigan',
           category: 'Layer',
@@ -238,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
         _SuggestionSeed(
           searchName: 'white sneakers',
-          type: 'shoes',
+          type: 'sneakers',
           label: 'Sneakers',
           category: 'Shoes',
           emoji: '\u{1F45F}',
@@ -288,6 +396,7 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted) return;
       final temp = weather.temperatureC;
       setState(() {
+        _lastTemperatureC = temp;
         _temperatureText = '${temp.toStringAsFixed(0)}\u00B0C';
         _conditionText = _weatherSummaryFromCode(weather.weatherCode);
         _tipText = _weatherTip(temp);
@@ -299,6 +408,7 @@ class _HomeScreenState extends State<HomeScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        _lastTemperatureC = 24;
         _isWeatherLoading = false;
         _temperatureText = '--';
         _conditionText = 'Location needed';
@@ -335,6 +445,9 @@ class _HomeScreenState extends State<HomeScreen>
           final result = await _clothingImageService.fetchClothingImage(
             name: item.name,
             type: _inferImageType(name: item.name, category: item.category),
+            audience: _audienceSearchValue,
+            allowGenericFallback: false,
+            minConfidenceScore: 8,
           );
           return _SuggestionItem(
             name: item.name,
@@ -439,10 +552,18 @@ class _HomeScreenState extends State<HomeScreen>
     if (text.contains('watch')) return 'watch';
     if (text.contains('sunglass')) return 'sunglasses';
     if (text.contains('cap') || text.contains('hat')) return 'cap';
+    if (text.contains('bag') || text.contains('tote') || text.contains('clutch')) {
+      return 'bag';
+    }
     if (text.contains('boot')) return 'boots';
+    if (text.contains('sandal')) return 'sandals';
+    if (text.contains('heel')) return 'heels';
+    if (text.contains('flat')) return 'flats';
     if (text.contains('loafer')) return 'loafers';
     if (text.contains('sneaker') || text.contains('shoe')) return 'shoes';
     if (text.contains('short')) return 'shorts';
+    if (text.contains('skirt')) return 'skirt';
+    if (text.contains('legging')) return 'leggings';
     if (text.contains('pant') ||
         text.contains('trouser') ||
         text.contains('jean') ||
@@ -529,16 +650,6 @@ class _HomeScreenState extends State<HomeScreen>
     return 'Mild weather - light layers work best';
   }
 
-  // ── Greeting helper ─────────────────────────────────────────
-  String get _greeting {
-    final hour = DateTime.now().toLocal().hour;
-    if (hour < 5) return 'Good Night';
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    if (hour < 21) return 'Good Evening';
-    return 'Good Night';
-  }
-
   // ── Responsive utilities ────────────────────────────────────
   bool get _isMobile => MediaQuery.of(context).size.width < 600;
   bool get _isTablet =>
@@ -571,12 +682,18 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   double get _suggestionCardHeight {
-    if (_isDesktop) return 200;
-    if (_isTablet) return 190;
-    return 175;
+    if (_isDesktop) return 208;
+    if (_isTablet) return 196;
+    return 182;
   }
 
-  // ── Quick Action data ────────────────────────────────────────
+  double get _contentMaxWidth {
+    if (_isDesktop) return 1080;
+    if (_isTablet) return 860;
+    return 560;
+  }
+
+  // Quick Action data
   static const List<_QuickAction> _actions = [
     _QuickAction(
       icon: Icons.add_rounded,
@@ -604,364 +721,593 @@ class _HomeScreenState extends State<HomeScreen>
     ),
   ];
 
+  Future<void> _openActionRoute(String route) async {
+    await Navigator.pushNamed(context, route);
+    if (!mounted) return;
+    await _loadSavedOutfitSuggestions();
+  }
+
+  Future<void> _refreshHomeData() async {
+    await _loadWeather();
+    if (!mounted) return;
+    await _loadSavedOutfitSuggestions();
+  }
+
+  Widget _buildSuggestionStrip({
+    required List<_SuggestionItem> items,
+    required String emptyMessage,
+    bool isLoading = false,
+  }) {
+    if (isLoading && items.isEmpty) {
+      return SizedBox(
+        height: _suggestionCardHeight,
+        child: const Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    if (items.isEmpty) {
+      return SizedBox(
+        height: _suggestionCardHeight,
+        child: Center(
+          child: Text(
+            emptyMessage,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: _suggestionCardHeight,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.only(left: 2, right: 2),
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final s = items[i];
+          return SuggestionCard(
+            key: ValueKey(
+              '${s.name}-${s.category}-${s.imagePath}-${s.imageBytes?.length ?? 0}-$i',
+            ),
+            name: s.name,
+            category: s.category,
+            imagePath: s.imagePath,
+            imageBytes: s.imageBytes,
+            emoji: s.emoji,
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
     final profile = context.watch<ProfileProvider>().profile;
+    final userName = profile?.name.trim().isNotEmpty == true
+        ? profile!.name.trim()
+        : 'there';
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SlideTransition(
-        position: _slideAnim,
-        child: FadeTransition(
-          opacity: _fadeAnim,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              // ── Top safe-area ──────────────────────────────────
-              SliverToBoxAdapter(child: SizedBox(height: topPadding + 20)),
-
-              // ── Header: Greeting + Avatar ─────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: _horizontalPadding),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Left: greeting
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '$_greeting,',
-                              style: TextStyle(
-                                fontSize: _isMobile ? 15 : 17,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${profile?.name}!',
-                              style: TextStyle(
-                                fontSize: _isMobile ? 24 : 28,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.textPrimary,
-                                height: 1.2,
-                              ),
-                            ),
-                          ],
+      body: Stack(
+        children: [
+          const _HomeBackgroundDecor(),
+          SlideTransition(
+            position: _slideAnim,
+            child: FadeTransition(
+              opacity: _fadeAnim,
+              child: RefreshIndicator(
+                color: AppColors.primary,
+                backgroundColor: AppColors.surface,
+                onRefresh: _refreshHomeData,
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          _horizontalPadding,
+                          topPadding + 12,
+                          _horizontalPadding,
+                          48,
                         ),
-                      ),
-
-                      // Right: profile avatar
-                      GestureDetector(
-                        onTap: () =>
-                            Navigator.pushNamed(context, AppRoutes.profile),
-                        child: Container(
-                          width: _isMobile ? 48 : 52,
-                          height: _isMobile ? 48 : 52,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.primarySoft,
-                            border: Border.all(
-                              color: AppColors.primary.withValues(alpha: 0.20),
-                              width: 2.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.06),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: ClipOval(
-                            child: profile?.imagePath != null
-                                ? Image.network(
-                                    profile!.imagePath!,
-                                    fit: BoxFit.cover,
-                                    errorBuilder:
-                                        (context, error, stackTrace) => Icon(
-                                          Icons.person_rounded,
-                                          color: AppColors.primary,
-                                          size: _isMobile ? 24 : 28,
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: _contentMaxWidth),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _HomeHeroCard(
+                                  userName: userName,
+                                  profileImagePath: profile?.imagePath,
+                                  isMobile: _isMobile,
+                                  onProfileTap: () =>
+                                      Navigator.pushNamed(context, AppRoutes.profile),
+                                ),
+                                const SizedBox(height: AppSpacing.md),
+                                _HomeGlassPanel(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (_isWeatherLoading)
+                                        const Align(
+                                          alignment: Alignment.centerRight,
+                                          child: Padding(
+                                            padding: EdgeInsets.only(bottom: 8),
+                                            child: SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                    loadingBuilder:
-                                        (context, child, loadingProgress) {
-                                          if (loadingProgress == null) {
-                                            return child;
-                                          }
-                                          return Icon(
-                                            Icons.person_rounded,
-                                            color: AppColors.primary,
-                                            size: _isMobile ? 24 : 28,
-                                          );
-                                        },
-                                  )
-                                : Icon(
-                                    Icons.person_rounded,
-                                    color: AppColors.primary,
-                                    size: _isMobile ? 24 : 28,
+                                      GestureDetector(
+                                        onTap: _isWeatherLoading ? null : _loadWeather,
+                                        child: WeatherCard(
+                                          temperature: _temperatureText,
+                                          location: _locationLabel,
+                                          condition: _conditionText,
+                                          tip: _tipText,
+                                          weatherIcon: _weatherIcon,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(child: SizedBox(height: _isMobile ? 16 : 20)),
-
-              // ── Weather Card ───────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: _horizontalPadding),
-                  child: GestureDetector(
-                    onTap: _isWeatherLoading ? null : _loadWeather,
-                    child: WeatherCard(
-                      temperature: _temperatureText,
-                      location: _locationLabel,
-                      condition: _conditionText,
-                      tip: _tipText,
-                      weatherIcon: _weatherIcon,
-                    ),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(child: SizedBox(height: _isMobile ? 20 : 28)),
-
-              // ── Quick Actions title ────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: _horizontalPadding),
-                  child: Text(
-                    'Quick Actions',
-                    style: TextStyle(
-                      fontSize: _isMobile ? 16 : 18,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1C1C1C),
-                    ),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(child: SizedBox(height: _isMobile ? 12 : 14)),
-
-              // ── Responsive Quick Actions grid ──────────────────
-              SliverPadding(
-                padding: EdgeInsets.symmetric(horizontal: _horizontalPadding),
-                sliver: SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: _gridCrossAxisCount.toInt(),
-                    mainAxisSpacing: _gridSpacing,
-                    crossAxisSpacing: _gridSpacing,
-                    childAspectRatio: _gridChildAspectRatio,
-                  ),
-                  delegate: SliverChildBuilderDelegate((context, i) {
-                    final action = _actions[i];
-                    return QuickActionCard(
-                      icon: action.icon,
-                      title: action.title,
-                      subtitle: action.subtitle,
-                      onTap: () async {
-                        await Navigator.pushNamed(context, action.route);
-                        if (!mounted) return;
-                        await _loadSavedOutfitSuggestions();
-                      },
-                    );
-                  }, childCount: _actions.length),
-                ),
-              ),
-              SliverToBoxAdapter(child: SizedBox(height: _isMobile ? 20 : 28)),
-
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: _horizontalPadding),
-                  child: Row(
-                    children: [
-                      Text(
-                        'AI Suggestion',
-                        style: TextStyle(
-                          fontSize: _isMobile ? 16 : 18,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1C1C1C),
-                        ),
-                      ),
-                      const Spacer(),
-                      TextButton.icon(
-                        onPressed: _liveSuggestions.length < 2
-                            ? null
-                            : () => _openTryOnWithOutfit(
-                                title: 'AI Suggestion',
-                                items: _liveSuggestions,
-                              ),
-                        icon: const Icon(
-                          Icons.face_retouching_natural_rounded,
-                          size: 16,
-                        ),
-                        label: const Text('Try Full Outfit'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: _horizontalPadding),
-                  child: Text(
-                    _suggestionsTip,
-                    style: TextStyle(
-                      fontSize: _isMobile ? 12 : 13,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF8C5A2B),
-                    ),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: _horizontalPadding),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: _openFullOutfitSuggestion,
-                      icon: const Icon(Icons.auto_awesome_rounded, size: 16),
-                      label: const Text('Open Full Outfit Suggestion'),
-                    ),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(child: SizedBox(height: _isMobile ? 10 : 12)),
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: _suggestionCardHeight,
-                  child: (_isSuggestionsLoading && _liveSuggestions.isEmpty)
-                      ? const Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )
-                      : _liveSuggestions.isEmpty
-                      ? Center(
-                          child: Text(
-                            _suggestionsError ??
-                                'No suggestions available right now.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
+                                ),
+                                const SizedBox(height: AppSpacing.lg),
+                                const _HomeSectionHeader(
+                                  title: 'Quick Actions',
+                                  subtitle: 'Everything you need for today in one place',
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                _HomeGlassPanel(
+                                  padding: const EdgeInsets.all(AppSpacing.sm + 4),
+                                  child: GridView.builder(
+                                    shrinkWrap: true,
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    itemCount: _actions.length,
+                                    gridDelegate:
+                                        SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: _gridCrossAxisCount.toInt(),
+                                      mainAxisSpacing: _gridSpacing,
+                                      crossAxisSpacing: _gridSpacing,
+                                      childAspectRatio: _gridChildAspectRatio,
+                                    ),
+                                    itemBuilder: (context, i) {
+                                      final action = _actions[i];
+                                      return QuickActionCard(
+                                        icon: action.icon,
+                                        title: action.title,
+                                        subtitle: action.subtitle,
+                                        onTap: () => _openActionRoute(action.route),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.lg),
+                                _HomeSectionHeader(
+                                  title: 'AI Suggestion',
+                                  subtitle: _suggestionsTip,
+                                  trailing: TextButton.icon(
+                                    onPressed: _liveSuggestions.length < 2
+                                        ? null
+                                        : () => _openTryOnWithOutfit(
+                                            title: 'AI Suggestion',
+                                            items: _liveSuggestions,
+                                          ),
+                                    icon: const Icon(
+                                      Icons.face_retouching_natural_rounded,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Try Full Outfit'),
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                _HomeGlassPanel(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _AudienceSelector(
+                                        selectedIndex: _selectedAudience,
+                                        onSelect: _onAudienceSelected,
+                                      ),
+                                      const SizedBox(height: AppSpacing.xs),
+                                      TextButton.icon(
+                                        onPressed: _openFullOutfitSuggestion,
+                                        icon: const Icon(
+                                          Icons.auto_awesome_rounded,
+                                          size: 16,
+                                        ),
+                                        label: const Text(
+                                          'Open Full Outfit Suggestion',
+                                        ),
+                                      ),
+                                      const SizedBox(height: AppSpacing.sm),
+                                      _buildSuggestionStrip(
+                                        items: _liveSuggestions,
+                                        emptyMessage:
+                                            _suggestionsError ??
+                                            'No suggestions available right now.',
+                                        isLoading: _isSuggestionsLoading,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.lg - 2),
+                                _HomeSectionHeader(
+                                  title: _savedOutfitTitle,
+                                  subtitle: 'Latest saved look from your wardrobe',
+                                  trailing: TextButton.icon(
+                                    onPressed: _savedSuggestions.length < 2
+                                        ? null
+                                        : () => _openTryOnWithOutfit(
+                                            title: _savedOutfitTitle,
+                                            items: _savedSuggestions,
+                                          ),
+                                    icon: const Icon(
+                                      Icons.face_retouching_natural_rounded,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Try Full Outfit'),
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                _HomeGlassPanel(
+                                  child: _buildSuggestionStrip(
+                                    items: _savedSuggestions,
+                                    emptyMessage: 'No saved outfit items yet.',
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        )
-                      : ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: _horizontalPadding,
-                          ),
-                          itemCount: _liveSuggestions.length,
-                          itemBuilder: (context, i) {
-                            final s = _liveSuggestions[i];
-                            return SuggestionCard(
-                              name: s.name,
-                              category: s.category,
-                              imagePath: s.imagePath,
-                              imageBytes: s.imageBytes,
-                              emoji: s.emoji,
-                            );
-                          },
-                        ),
-                ),
-              ),
-              SliverToBoxAdapter(child: SizedBox(height: _isMobile ? 14 : 16)),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: _horizontalPadding),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _savedOutfitTitle,
-                          style: TextStyle(
-                            fontSize: _isMobile ? 16 : 18,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF1C1C1C),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      TextButton.icon(
-                        onPressed: _savedSuggestions.length < 2
-                            ? null
-                            : () => _openTryOnWithOutfit(
-                                title: _savedOutfitTitle,
-                                items: _savedSuggestions,
-                              ),
-                        icon: const Icon(
-                          Icons.face_retouching_natural_rounded,
-                          size: 16,
-                        ),
-                        label: const Text('Try Full Outfit'),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-              SliverToBoxAdapter(child: SizedBox(height: _isMobile ? 10 : 12)),
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: _suggestionCardHeight,
-                  child: _savedSuggestions.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No saved outfit items yet.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: _horizontalPadding,
-                          ),
-                          itemCount: _savedSuggestions.length,
-                          itemBuilder: (context, i) {
-                            final s = _savedSuggestions[i];
-                            return SuggestionCard(
-                              name: s.name,
-                              category: s.category,
-                              imagePath: s.imagePath,
-                              imageBytes: s.imageBytes,
-                              emoji: s.emoji,
-                            );
-                          },
-                        ),
-                ),
-              ),
-
-              // ── Bottom padding ─────────────────────────────────
-              const SliverToBoxAdapter(child: SizedBox(height: 48)),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
-
-      // ── Bottom Navigation Bar ──────────────────────────────────
       bottomNavigationBar: const AppBottomNavBar(currentIndex: 0),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Data models
-// ─────────────────────────────────────────────────────────────────
+class _HomeBackgroundDecor extends StatelessWidget {
+  const _HomeBackgroundDecor();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AppColors.background,
+                    AppColors.primarySoft.withValues(alpha: 0.35),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: -140,
+            left: -95,
+            child: Container(
+              width: 280,
+              height: 280,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(alpha: 0.1),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 170,
+            right: -110,
+            child: Container(
+              width: 240,
+              height: 240,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primarySoft.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -90,
+            left: -50,
+            child: Container(
+              width: 190,
+              height: 190,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primaryLight.withValues(alpha: 0.13),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeGlassPanel extends StatelessWidget {
+  const _HomeGlassPanel({
+    required this.child,
+    this.padding = const EdgeInsets.all(AppSpacing.md),
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.93),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(
+          color: AppColors.border.withValues(alpha: 0.9),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _HomeHeroCard extends StatelessWidget {
+  const _HomeHeroCard({
+    required this.userName,
+    required this.profileImagePath,
+    required this.isMobile,
+    required this.onProfileTap,
+  });
+
+  final String userName;
+  final String? profileImagePath;
+  final bool isMobile;
+  final VoidCallback onProfileTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarSize = isMobile ? 68.0 : 76.0;
+    final greeting = _greetingForHour(DateTime.now().toLocal().hour);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onProfileTap,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md + 2,
+          ),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFB57A67),
+                Color(0xFF8A5646),
+                Color(0xFF643B31),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(AppRadius.xl),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.24),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.16),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                top: -60,
+                right: -45,
+                child: Container(
+                  width: 145,
+                  height: 145,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: -55,
+                left: -30,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$greeting,',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: isMobile ? 13 : 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          userName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            height: 1.08,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Container(
+                    width: avatarSize,
+                    height: avatarSize,
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.2),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.65),
+                        width: 2,
+                      ),
+                    ),
+                    child: ClipOval(
+                      child: (profileImagePath != null &&
+                              profileImagePath!.isNotEmpty)
+                          ? Image.network(
+                              profileImagePath!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => _fallbackAvatar(),
+                            )
+                          : _fallbackAvatar(),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _fallbackAvatar() {
+    return Container(
+      color: Colors.white.withValues(alpha: 0.18),
+      alignment: Alignment.center,
+      child: const Icon(Icons.person_rounded, color: Colors.white, size: 28),
+    );
+  }
+
+  String _greetingForHour(int hour) {
+    if (hour < 5) return 'Good Night';
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    if (hour < 21) return 'Good Evening';
+    return 'Good Night';
+  }
+}
+
+class _HomeSectionHeader extends StatelessWidget {
+  const _HomeSectionHeader({
+    required this.title,
+    required this.subtitle,
+    this.trailing,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 4,
+          height: 34,
+          decoration: BoxDecoration(
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(AppRadius.full),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: AppSpacing.sm),
+          trailing!,
+        ],
+      ],
+    );
+  }
+}
 
 class _QuickAction {
   final IconData icon;
@@ -1010,4 +1356,89 @@ class _SuggestionPlan {
   final String tip;
   final List<_SuggestionSeed> items;
   const _SuggestionPlan({required this.tip, required this.items});
+}
+
+class _AudienceSelector extends StatelessWidget {
+  const _AudienceSelector({
+    required this.selectedIndex,
+    required this.onSelect,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget option({
+      required int index,
+      required String label,
+      required IconData icon,
+    }) {
+      final isSelected = selectedIndex == index;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => onSelect(index),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.sm + 1,
+            ),
+            decoration: BoxDecoration(
+              color: isSelected ? AppColors.primary : AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.full),
+              border: Border.all(
+                color: isSelected ? AppColors.primary : AppColors.border,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.25),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ]
+                  : const [],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: isSelected ? Colors.white : AppColors.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: isSelected ? Colors.white : AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.85)),
+      ),
+      child: Row(
+        children: [
+          option(index: 0, label: 'Men', icon: Icons.male_rounded),
+          const SizedBox(width: AppSpacing.xs),
+          option(index: 1, label: 'Women', icon: Icons.female_rounded),
+        ],
+      ),
+    );
+  }
 }

@@ -13,6 +13,11 @@ import '../services/supabase_service.dart';
 import '../services/weather_service.dart';
 import '../services/outfit_suggestion_service.dart';
 import '../services/clothing_image_service.dart';
+part 'outfit_screen/ui_components.dart';
+part 'outfit_screen/generated_outfit_sheet.dart';
+part 'outfit_screen/models.dart';
+part 'outfit_screen/save_outfit_page.dart';
+
 
 class OutfitScreen extends StatefulWidget {
   const OutfitScreen({super.key});
@@ -26,6 +31,7 @@ class _OutfitScreenState extends State<OutfitScreen>
   // ── State ────────────────────────────────────────────────────
   int _selectedOption = 0;
   int _selectedOccasion = 0;
+  int _selectedAudience = 0;
   bool _isGenerating = false;
   String? _generationStatus;
   String? _errorMessage;
@@ -71,6 +77,15 @@ class _OutfitScreenState extends State<OutfitScreen>
     'Business',
     'Formal',
     'Sport',
+  ];
+
+  static const List<_AudienceOption> _audiences = [
+    _AudienceOption(label: 'Men', searchValue: 'men', icon: Icons.male_rounded),
+    _AudienceOption(
+      label: 'Women',
+      searchValue: 'women',
+      icon: Icons.female_rounded,
+    ),
   ];
   static const List<String> _governorates = [
     'Cairo',
@@ -583,10 +598,18 @@ class _OutfitScreenState extends State<OutfitScreen>
     if (text.contains('watch')) return 'watch';
     if (text.contains('sunglass')) return 'sunglasses';
     if (text.contains('cap') || text.contains('hat')) return 'cap';
+    if (text.contains('bag') || text.contains('tote') || text.contains('clutch')) {
+      return 'bag';
+    }
     if (text.contains('boot')) return 'boots';
+    if (text.contains('sandal')) return 'sandals';
+    if (text.contains('heel')) return 'heels';
+    if (text.contains('flat')) return 'flats';
     if (text.contains('loafer')) return 'loafers';
     if (text.contains('sneaker') || text.contains('shoe')) return 'shoes';
     if (text.contains('short')) return 'shorts';
+    if (text.contains('skirt')) return 'skirt';
+    if (text.contains('legging')) return 'leggings';
     if (text.contains('pant') ||
         text.contains('trouser') ||
         text.contains('jean') ||
@@ -627,6 +650,23 @@ class _OutfitScreenState extends State<OutfitScreen>
     required _WeatherBand band,
     required String occasion,
   }) {
+    final seeds = _selectedAudience == 1
+        ? _womenFullSuggestionSeedsForContext(band: band, occasion: occasion)
+        : _baseFullSuggestionSeedsForContext(band: band, occasion: occasion);
+
+    return seeds
+        .map(
+          (seed) => seed.copyWith(
+            searchName: _audienceQualifiedSearchName(seed.searchName),
+          ),
+        )
+        .toList();
+  }
+
+  List<_ApiSuggestionSeed> _womenFullSuggestionSeedsForContext({
+    required _WeatherBand band,
+    required String occasion,
+  }) {
     final occ = _occasionKey(occasion);
 
     if (occ == 'formal') {
@@ -634,94 +674,94 @@ class _OutfitScreenState extends State<OutfitScreen>
         case _WeatherBand.hot:
           return const [
             _ApiSuggestionSeed(
-              searchName: 'formal linen shirt',
-              type: 'shirt',
-              name: 'Formal Shirt',
-              category: 'Top',
-              emoji: '\u{1F454}',
+              searchName: 'champagne satin midi dress',
+              type: 'dress',
+              name: 'Midi Dress',
+              category: 'Dress',
+              emoji: '\u{1F457}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'formal slim trousers',
-              type: 'pants',
-              name: 'Formal Trousers',
-              category: 'Bottom',
-              emoji: '\u{1F456}',
-            ),
-            _ApiSuggestionSeed(
-              searchName: 'oxford leather shoes',
-              type: 'shoes',
-              name: 'Oxford Shoes',
+              searchName: 'nude strappy block heels',
+              type: 'heels',
+              name: 'Block Heels',
               category: 'Shoes',
-              emoji: '\u{1F45E}',
+              emoji: '\u{1F460}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'formal blazer',
+              searchName: 'cream formal blazer',
               type: 'blazer',
-              name: 'Blazer',
+              name: 'Formal Blazer',
               category: 'Jacket',
               emoji: '\u{1F9E5}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'champagne clutch bag',
+              type: 'bag',
+              name: 'Clutch Bag',
+              category: 'Accessory',
+              emoji: '\u{1F45C}',
             ),
           ];
         case _WeatherBand.cold:
           return const [
             _ApiSuggestionSeed(
-              searchName: 'formal turtleneck',
-              type: 'top',
-              name: 'Turtleneck',
-              category: 'Top',
-              emoji: '\u{1F9E5}',
+              searchName: 'black knit turtleneck dress',
+              type: 'dress',
+              name: 'Knit Dress',
+              category: 'Dress',
+              emoji: '\u{1F457}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'formal wool trousers',
-              type: 'pants',
-              name: 'Wool Trousers',
-              category: 'Bottom',
-              emoji: '\u{1F456}',
-            ),
-            _ApiSuggestionSeed(
-              searchName: 'formal leather boots',
+              searchName: 'black leather ankle boots',
               type: 'boots',
-              name: 'Formal Boots',
+              name: 'Ankle Boots',
               category: 'Shoes',
               emoji: '\u{1F97E}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'formal long coat',
+              searchName: 'camel tailored wool coat',
               type: 'coat',
-              name: 'Long Coat',
+              name: 'Wool Coat',
               category: 'Jacket',
               emoji: '\u{1F9E5}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black structured handbag',
+              type: 'bag',
+              name: 'Handbag',
+              category: 'Accessory',
+              emoji: '\u{1F45C}',
             ),
           ];
         case _WeatherBand.mild:
           return const [
             _ApiSuggestionSeed(
-              searchName: 'formal white shirt',
-              type: 'shirt',
-              name: 'White Shirt',
+              searchName: 'ivory silk blouse',
+              type: 'blouse',
+              name: 'Silk Blouse',
               category: 'Top',
-              emoji: '\u{1F454}',
+              emoji: '\u{1F45A}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'formal tailored pants',
-              type: 'pants',
-              name: 'Tailored Pants',
+              searchName: 'black tailored midi skirt',
+              type: 'skirt',
+              name: 'Midi Skirt',
               category: 'Bottom',
-              emoji: '\u{1F456}',
+              emoji: '\u{1F45A}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'formal derby shoes',
-              type: 'shoes',
-              name: 'Derby Shoes',
+              searchName: 'black pointed toe heels',
+              type: 'heels',
+              name: 'Pointed Heels',
               category: 'Shoes',
-              emoji: '\u{1F45E}',
+              emoji: '\u{1F460}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'classic formal watch',
-              type: 'watch',
-              name: 'Classic Watch',
-              category: 'Accessory',
-              emoji: '\u{231A}',
+              searchName: 'black classic blazer',
+              type: 'blazer',
+              name: 'Classic Blazer',
+              category: 'Jacket',
+              emoji: '\u{1F9E5}',
             ),
           ];
       }
@@ -732,28 +772,425 @@ class _OutfitScreenState extends State<OutfitScreen>
         case _WeatherBand.hot:
           return const [
             _ApiSuggestionSeed(
-              searchName: 'linen shirt men',
+              searchName: 'white linen blouse',
+              type: 'blouse',
+              name: 'Linen Blouse',
+              category: 'Top',
+              emoji: '\u{1F45A}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'beige tailored wide leg trousers',
+              type: 'trousers',
+              name: 'Wide Leg Trousers',
+              category: 'Bottom',
+              emoji: '\u{1F456}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'tan pointed flats',
+              type: 'flats',
+              name: 'Pointed Flats',
+              category: 'Shoes',
+              emoji: '\u{1F97F}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'tan minimal leather tote',
+              type: 'bag',
+              name: 'Leather Tote',
+              category: 'Accessory',
+              emoji: '\u{1F45C}',
+            ),
+          ];
+        case _WeatherBand.cold:
+          return const [
+            _ApiSuggestionSeed(
+              searchName: 'cream ribbed turtleneck sweater',
+              type: 'sweater',
+              name: 'Turtleneck Sweater',
+              category: 'Top',
+              emoji: '\u{1F9E5}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'charcoal wool tailored trousers',
+              type: 'trousers',
+              name: 'Wool Trousers',
+              category: 'Bottom',
+              emoji: '\u{1F456}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black leather ankle boots',
+              type: 'boots',
+              name: 'Ankle Boots',
+              category: 'Shoes',
+              emoji: '\u{1F97E}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'camel belted wool coat',
+              type: 'coat',
+              name: 'Belted Coat',
+              category: 'Jacket',
+              emoji: '\u{1F9E5}',
+            ),
+          ];
+        case _WeatherBand.mild:
+          return const [
+            _ApiSuggestionSeed(
+              searchName: 'white cotton button blouse',
+              type: 'blouse',
+              name: 'Button Blouse',
+              category: 'Top',
+              emoji: '\u{1F45A}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'navy straight leg trousers',
+              type: 'trousers',
+              name: 'Straight Trousers',
+              category: 'Bottom',
+              emoji: '\u{1F456}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black leather loafers',
+              type: 'loafers',
+              name: 'Leather Loafers',
+              category: 'Shoes',
+              emoji: '\u{1F45E}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'navy soft blazer',
+              type: 'blazer',
+              name: 'Soft Blazer',
+              category: 'Jacket',
+              emoji: '\u{1F9E5}',
+            ),
+          ];
+      }
+    }
+
+    if (occ == 'sport') {
+      switch (band) {
+        case _WeatherBand.hot:
+          return const [
+            _ApiSuggestionSeed(
+              searchName: 'white training tank top',
+              type: 'top',
+              name: 'Training Tank',
+              category: 'Top',
+              emoji: '\u{1F45A}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black biker shorts',
+              type: 'shorts',
+              name: 'Biker Shorts',
+              category: 'Bottom',
+              emoji: '\u{1FA73}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'white training sneakers',
+              type: 'sneakers',
+              name: 'Training Sneakers',
+              category: 'Shoes',
+              emoji: '\u{1F45F}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black sports cap',
+              type: 'cap',
+              name: 'Sports Cap',
+              category: 'Accessory',
+              emoji: '\u{1F9E2}',
+            ),
+          ];
+        case _WeatherBand.cold:
+          return const [
+            _ApiSuggestionSeed(
+              searchName: 'black thermal training top',
+              type: 'top',
+              name: 'Thermal Top',
+              category: 'Top',
+              emoji: '\u{1F9E5}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black high waist leggings',
+              type: 'leggings',
+              name: 'Leggings',
+              category: 'Bottom',
+              emoji: '\u{1F456}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'white running sneakers',
+              type: 'sneakers',
+              name: 'Running Sneakers',
+              category: 'Shoes',
+              emoji: '\u{1F45F}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black training jacket',
+              type: 'jacket',
+              name: 'Training Jacket',
+              category: 'Jacket',
+              emoji: '\u{1F9E5}',
+            ),
+          ];
+        case _WeatherBand.mild:
+          return const [
+            _ApiSuggestionSeed(
+              searchName: 'white athletic crop top',
+              type: 'top',
+              name: 'Athletic Top',
+              category: 'Top',
+              emoji: '\u{1F45A}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black track leggings',
+              type: 'leggings',
+              name: 'Track Leggings',
+              category: 'Bottom',
+              emoji: '\u{1F456}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'white gym sneakers',
+              type: 'sneakers',
+              name: 'Gym Sneakers',
+              category: 'Shoes',
+              emoji: '\u{1F45F}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black lightweight sports jacket',
+              type: 'jacket',
+              name: 'Sports Jacket',
+              category: 'Jacket',
+              emoji: '\u{1F9E5}',
+            ),
+          ];
+      }
+    }
+
+    switch (band) {
+      case _WeatherBand.hot:
+        return const [
+          _ApiSuggestionSeed(
+            searchName: 'ivory linen sleeveless blouse',
+            type: 'blouse',
+            name: 'Linen Blouse',
+            category: 'Top',
+            emoji: '\u{1F45A}',
+          ),
+          _ApiSuggestionSeed(
+            searchName: 'beige high waisted summer shorts',
+            type: 'shorts',
+            name: 'Summer Shorts',
+            category: 'Bottom',
+            emoji: '\u{1FA73}',
+          ),
+          _ApiSuggestionSeed(
+            searchName: 'tan flat summer sandals',
+            type: 'sandals',
+            name: 'Flat Sandals',
+            category: 'Shoes',
+            emoji: '\u{1F461}',
+          ),
+          _ApiSuggestionSeed(
+            searchName: 'tortoise sunglasses',
+            type: 'sunglasses',
+            name: 'Sunglasses',
+            category: 'Accessory',
+            emoji: '\u{1F576}',
+          ),
+        ];
+      case _WeatherBand.cold:
+        return const [
+          _ApiSuggestionSeed(
+            searchName: 'cream knit turtleneck sweater',
+            type: 'sweater',
+            name: 'Knit Sweater',
+            category: 'Top',
+            emoji: '\u{1F9E5}',
+          ),
+          _ApiSuggestionSeed(
+            searchName: 'dark straight leg jeans',
+            type: 'jeans',
+            name: 'Straight Jeans',
+            category: 'Bottom',
+            emoji: '\u{1F456}',
+          ),
+          _ApiSuggestionSeed(
+            searchName: 'black leather ankle boots',
+            type: 'boots',
+            name: 'Ankle Boots',
+            category: 'Shoes',
+            emoji: '\u{1F97E}',
+          ),
+          _ApiSuggestionSeed(
+            searchName: 'camel wool wrap coat',
+            type: 'coat',
+            name: 'Wrap Coat',
+            category: 'Jacket',
+            emoji: '\u{1F9E5}',
+          ),
+        ];
+      case _WeatherBand.mild:
+        return const [
+          _ApiSuggestionSeed(
+            searchName: 'white cotton button blouse',
+            type: 'blouse',
+            name: 'Button Blouse',
+            category: 'Top',
+            emoji: '\u{1F45A}',
+          ),
+          _ApiSuggestionSeed(
+            searchName: 'sand wide leg trousers',
+            type: 'trousers',
+            name: 'Wide Leg Trousers',
+            category: 'Bottom',
+            emoji: '\u{1F456}',
+          ),
+          _ApiSuggestionSeed(
+            searchName: 'white fashion sneakers',
+            type: 'sneakers',
+            name: 'Fashion Sneakers',
+            category: 'Shoes',
+            emoji: '\u{1F45F}',
+          ),
+          _ApiSuggestionSeed(
+            searchName: 'oatmeal cardigan sweater',
+            type: 'cardigan',
+            name: 'Cardigan',
+            category: 'Jacket',
+            emoji: '\u{1F9E5}',
+          ),
+        ];
+    }
+  }
+
+  List<_ApiSuggestionSeed> _baseFullSuggestionSeedsForContext({
+    required _WeatherBand band,
+    required String occasion,
+  }) {
+    final occ = _occasionKey(occasion);
+
+    if (occ == 'formal') {
+      switch (band) {
+        case _WeatherBand.hot:
+          return const [
+            _ApiSuggestionSeed(
+              searchName: 'white linen dress shirt',
+              type: 'shirt',
+              name: 'Linen Dress Shirt',
+              category: 'Top',
+              emoji: '\u{1F454}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'navy linen trousers',
+              type: 'pants',
+              name: 'Navy Trousers',
+              category: 'Bottom',
+              emoji: '\u{1F456}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'brown oxford leather shoes',
+              type: 'shoes',
+              name: 'Brown Oxfords',
+              category: 'Shoes',
+              emoji: '\u{1F45E}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'navy formal blazer',
+              type: 'blazer',
+              name: 'Navy Blazer',
+              category: 'Jacket',
+              emoji: '\u{1F9E5}',
+            ),
+          ];
+        case _WeatherBand.cold:
+          return const [
+            _ApiSuggestionSeed(
+              searchName: 'black formal turtleneck',
+              type: 'top',
+              name: 'Turtleneck',
+              category: 'Top',
+              emoji: '\u{1F9E5}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'charcoal wool trousers',
+              type: 'pants',
+              name: 'Wool Trousers',
+              category: 'Bottom',
+              emoji: '\u{1F456}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black leather chelsea boots',
+              type: 'boots',
+              name: 'Formal Boots',
+              category: 'Shoes',
+              emoji: '\u{1F97E}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'charcoal long wool coat',
+              type: 'coat',
+              name: 'Long Coat',
+              category: 'Jacket',
+              emoji: '\u{1F9E5}',
+            ),
+          ];
+        case _WeatherBand.mild:
+          return const [
+            _ApiSuggestionSeed(
+              searchName: 'white formal dress shirt',
+              type: 'shirt',
+              name: 'White Shirt',
+              category: 'Top',
+              emoji: '\u{1F454}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'charcoal tailored pants',
+              type: 'pants',
+              name: 'Tailored Pants',
+              category: 'Bottom',
+              emoji: '\u{1F456}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'black derby shoes',
+              type: 'shoes',
+              name: 'Derby Shoes',
+              category: 'Shoes',
+              emoji: '\u{1F45E}',
+            ),
+            _ApiSuggestionSeed(
+              searchName: 'navy formal blazer',
+              type: 'blazer',
+              name: 'Navy Blazer',
+              category: 'Jacket',
+              emoji: '\u{1F9E5}',
+            ),
+          ];
+      }
+    }
+
+    if (occ == 'business') {
+      switch (band) {
+        case _WeatherBand.hot:
+          return const [
+            _ApiSuggestionSeed(
+              searchName: 'white linen shirt',
               type: 'shirt',
               name: 'Linen Shirt',
               category: 'Top',
               emoji: '\u{1F454}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'tailored trousers',
+              searchName: 'beige tailored trousers',
               type: 'pants',
               name: 'Tailored Trousers',
               category: 'Bottom',
               emoji: '\u{1F456}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'brown loafers',
+              searchName: 'brown suede loafers',
               type: 'loafers',
               name: 'Loafers',
               category: 'Shoes',
               emoji: '\u{1F45E}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'minimalist watch',
+              searchName: 'brown leather watch',
               type: 'watch',
               name: 'Watch',
               category: 'Accessory',
@@ -763,28 +1200,28 @@ class _OutfitScreenState extends State<OutfitScreen>
         case _WeatherBand.cold:
           return const [
             _ApiSuggestionSeed(
-              searchName: 'turtleneck sweater',
+              searchName: 'cream turtleneck sweater',
               type: 'sweater',
               name: 'Turtleneck',
               category: 'Top',
               emoji: '\u{1F9E5}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'wool trousers formal',
+              searchName: 'charcoal wool trousers',
               type: 'pants',
               name: 'Wool Trousers',
               category: 'Bottom',
               emoji: '\u{1F456}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'leather chelsea boots',
+              searchName: 'black leather chelsea boots',
               type: 'boots',
               name: 'Leather Boots',
               category: 'Shoes',
               emoji: '\u{1F97E}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'long wool coat',
+              searchName: 'charcoal long wool coat',
               type: 'coat',
               name: 'Wool Coat',
               category: 'Jacket',
@@ -794,28 +1231,28 @@ class _OutfitScreenState extends State<OutfitScreen>
         case _WeatherBand.mild:
           return const [
             _ApiSuggestionSeed(
-              searchName: 'oxford shirt',
+              searchName: 'light blue oxford shirt',
               type: 'shirt',
               name: 'Oxford Shirt',
               category: 'Top',
               emoji: '\u{1F454}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'slim fit chinos',
+              searchName: 'navy slim fit chinos',
               type: 'pants',
               name: 'Chinos',
               category: 'Bottom',
               emoji: '\u{1F456}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'derby shoes',
+              searchName: 'brown derby shoes',
               type: 'shoes',
               name: 'Derby Shoes',
               category: 'Shoes',
               emoji: '\u{1F45E}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'classic watch',
+              searchName: 'brown leather watch',
               type: 'watch',
               name: 'Classic Watch',
               category: 'Accessory',
@@ -830,28 +1267,28 @@ class _OutfitScreenState extends State<OutfitScreen>
         case _WeatherBand.hot:
           return const [
             _ApiSuggestionSeed(
-              searchName: 'dry fit t shirt',
+              searchName: 'white dry fit t shirt',
               type: 'tshirt',
               name: 'Dry-Fit Tee',
               category: 'Top',
               emoji: '\u{1F455}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'running shorts',
+              searchName: 'black running shorts',
               type: 'shorts',
               name: 'Running Shorts',
               category: 'Bottom',
               emoji: '\u{1FA73}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'training sneakers',
+              searchName: 'white training sneakers',
               type: 'sneakers',
               name: 'Training Sneakers',
               category: 'Shoes',
               emoji: '\u{1F45F}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'sports cap',
+              searchName: 'black sports cap',
               type: 'cap',
               name: 'Sports Cap',
               category: 'Accessory',
@@ -861,28 +1298,28 @@ class _OutfitScreenState extends State<OutfitScreen>
         case _WeatherBand.cold:
           return const [
             _ApiSuggestionSeed(
-              searchName: 'thermal training top',
+              searchName: 'black thermal training top',
               type: 'top',
               name: 'Thermal Top',
               category: 'Top',
               emoji: '\u{1F9E5}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'running joggers',
+              searchName: 'black running joggers',
               type: 'pants',
               name: 'Joggers',
               category: 'Bottom',
               emoji: '\u{1F456}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'running shoes',
+              searchName: 'white running shoes',
               type: 'shoes',
               name: 'Running Shoes',
               category: 'Shoes',
               emoji: '\u{1F45F}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'training jacket',
+              searchName: 'black training jacket',
               type: 'jacket',
               name: 'Training Jacket',
               category: 'Jacket',
@@ -892,28 +1329,28 @@ class _OutfitScreenState extends State<OutfitScreen>
         case _WeatherBand.mild:
           return const [
             _ApiSuggestionSeed(
-              searchName: 'athletic t shirt',
+              searchName: 'white athletic t shirt',
               type: 'tshirt',
               name: 'Athletic Tee',
               category: 'Top',
               emoji: '\u{1F455}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'track joggers',
+              searchName: 'black track joggers',
               type: 'pants',
               name: 'Track Joggers',
               category: 'Bottom',
               emoji: '\u{1F456}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'gym sneakers',
+              searchName: 'white gym sneakers',
               type: 'sneakers',
               name: 'Gym Sneakers',
               category: 'Shoes',
               emoji: '\u{1F45F}',
             ),
             _ApiSuggestionSeed(
-              searchName: 'sports cap',
+              searchName: 'black sports cap',
               type: 'cap',
               name: 'Sports Cap',
               category: 'Accessory',
@@ -927,28 +1364,28 @@ class _OutfitScreenState extends State<OutfitScreen>
       case _WeatherBand.hot:
         return const [
           _ApiSuggestionSeed(
-            searchName: 'cotton t-shirt',
+            searchName: 'white cotton t-shirt',
             type: 'tshirt',
             name: 'T-shirt',
             category: 'Top',
             emoji: '\u{1F455}',
           ),
           _ApiSuggestionSeed(
-            searchName: 'tailored shorts',
+            searchName: 'beige chino shorts',
             type: 'shorts',
             name: 'Shorts',
             category: 'Bottom',
             emoji: '\u{1FA73}',
           ),
           _ApiSuggestionSeed(
-            searchName: 'white sneakers',
+            searchName: 'white low top sneakers',
             type: 'sneakers',
             name: 'Sneakers',
             category: 'Shoes',
             emoji: '\u{1F45F}',
           ),
           _ApiSuggestionSeed(
-            searchName: 'sunglasses fashion',
+            searchName: 'tortoise sunglasses',
             type: 'sunglasses',
             name: 'Sunglasses',
             category: 'Accessory',
@@ -958,28 +1395,28 @@ class _OutfitScreenState extends State<OutfitScreen>
       case _WeatherBand.cold:
         return const [
           _ApiSuggestionSeed(
-            searchName: 'warm hoodie',
+            searchName: 'charcoal warm hoodie',
             type: 'hoodie',
             name: 'Warm Hoodie',
             category: 'Top',
             emoji: '\u{1F9E5}',
           ),
           _ApiSuggestionSeed(
-            searchName: 'dark jeans',
+            searchName: 'dark denim jeans',
             type: 'jeans',
             name: 'Dark Jeans',
             category: 'Bottom',
             emoji: '\u{1F456}',
           ),
           _ApiSuggestionSeed(
-            searchName: 'leather boots',
+            searchName: 'brown leather boots',
             type: 'boots',
             name: 'Leather Boots',
             category: 'Shoes',
             emoji: '\u{1F97E}',
           ),
           _ApiSuggestionSeed(
-            searchName: 'puffer jacket',
+            searchName: 'black puffer jacket',
             type: 'jacket',
             name: 'Puffer Jacket',
             category: 'Jacket',
@@ -989,28 +1426,28 @@ class _OutfitScreenState extends State<OutfitScreen>
       case _WeatherBand.mild:
         return const [
           _ApiSuggestionSeed(
-            searchName: 'cotton tee',
+            searchName: 'white cotton tee',
             type: 'tshirt',
             name: 'Cotton Tee',
             category: 'Top',
             emoji: '\u{1F455}',
           ),
           _ApiSuggestionSeed(
-            searchName: 'slim jeans',
+            searchName: 'dark slim jeans',
             type: 'jeans',
             name: 'Slim Jeans',
             category: 'Bottom',
             emoji: '\u{1F456}',
           ),
           _ApiSuggestionSeed(
-            searchName: 'clean sneakers',
+            searchName: 'white clean sneakers',
             type: 'sneakers',
             name: 'Clean Sneakers',
             category: 'Shoes',
             emoji: '\u{1F45F}',
           ),
           _ApiSuggestionSeed(
-            searchName: 'baseball cap',
+            searchName: 'navy baseball cap',
             type: 'cap',
             name: 'Cap',
             category: 'Accessory',
@@ -1041,10 +1478,11 @@ class _OutfitScreenState extends State<OutfitScreen>
         final result = await _clothingImageService.fetchClothingImage(
           name: seed.searchName,
           type: seed.type,
+          audience: _audienceSearchValue,
           index: 0,
-          allowGenericFallback: preferFastFallback,
-          skipMetadataSearch: preferFastFallback,
-          minConfidenceScore: 2,
+          allowGenericFallback: false,
+          skipMetadataSearch: false,
+          minConfidenceScore: 8,
         );
         developer.log(
           'Fallback preview image for ${seed.name} finished in ${stopwatch.elapsedMilliseconds}ms '
@@ -1079,19 +1517,56 @@ class _OutfitScreenState extends State<OutfitScreen>
     return hasBytes || hasPath;
   }
 
+  bool _isDressPiece(_OutfitPiece piece) {
+    final text = '${piece.name} ${piece.category} ${piece.apiImageType ?? ''}'
+        .toLowerCase();
+    return text.contains('dress') || text.contains('gown');
+  }
+
+  bool _hasCompleteOutfitStructure(List<_OutfitPiece> items) {
+    final hasDress = items.any(_isDressPiece);
+    final hasShoes = items.any((piece) {
+      return _bucketForCategory(piece.category) == _WardrobeBucket.shoes;
+    });
+    final hasLayerOrAccessory = items.any((piece) {
+      final bucket = _bucketForCategory(piece.category);
+      return bucket == _WardrobeBucket.jacket ||
+          bucket == _WardrobeBucket.accessory;
+    });
+
+    if (hasDress) {
+      return hasShoes && hasLayerOrAccessory;
+    }
+
+    final hasTop = items.any((piece) {
+      return _bucketForCategory(piece.category) == _WardrobeBucket.top;
+    });
+    final hasBottom = items.any((piece) {
+      return _bucketForCategory(piece.category) == _WardrobeBucket.bottom;
+    });
+    return hasTop && hasBottom && hasShoes && hasLayerOrAccessory;
+  }
+
   List<String> _imageTypeCandidates({
     required String baseType,
     required String category,
   }) {
     final out = <String>[baseType];
     final c = category.toLowerCase();
-    if (c.contains('shoe') || c.contains('sneaker') || c.contains('boot')) {
-      out.addAll(['shoes', 'sneakers']);
+    if (c.contains('shoe') ||
+        c.contains('sneaker') ||
+        c.contains('boot') ||
+        c.contains('heel') ||
+        c.contains('flat') ||
+        c.contains('sandal')) {
+      out.addAll(['shoes', 'sneakers', 'boots', 'heels', 'flats', 'sandals']);
     } else if (c.contains('pant') ||
         c.contains('bottom') ||
         c.contains('jean') ||
-        c.contains('short')) {
-      out.addAll(['pants', 'jeans', 'shorts', 'bottom']);
+        c.contains('short') ||
+        c.contains('skirt') ||
+        c.contains('legging')) {
+      out.addAll(['pants', 'jeans', 'shorts', 'skirt', 'leggings', 'bottom']);
     } else if (c.contains('top') ||
         c.contains('shirt') ||
         c.contains('tee') ||
@@ -1101,8 +1576,11 @@ class _OutfitScreenState extends State<OutfitScreen>
         c.contains('coat') ||
         c.contains('outer')) {
       out.addAll(['jacket', 'coat']);
-    } else if (c.contains('access')) {
-      out.addAll(['accessory', 'watch']);
+    } else if (c.contains('access') ||
+        c.contains('bag') ||
+        c.contains('tote') ||
+        c.contains('clutch')) {
+      out.addAll(['accessory', 'watch', 'bag']);
     }
     out.add('clothes');
     return out.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
@@ -1146,10 +1624,11 @@ class _OutfitScreenState extends State<OutfitScreen>
         final directResult = await _clothingImageService.fetchClothingImage(
           name: apiName,
           type: apiType,
+          audience: _audienceSearchValue,
           index: piece.apiImageIndex,
-          allowGenericFallback: preferFastFallback,
-          skipMetadataSearch: preferFastFallback,
-          minConfidenceScore: 2,
+          allowGenericFallback: false,
+          skipMetadataSearch: false,
+          minConfidenceScore: 8,
         );
         if (directResult.bytes != null && directResult.bytes!.isNotEmpty) {
           completed++;
@@ -1171,7 +1650,7 @@ class _OutfitScreenState extends State<OutfitScreen>
             usedGenericFallback: directResult.isGenericFallback,
           );
         }
-        if (preferFastFallback) {
+        if (preferFastFallback && directResult.isSuccess) {
           completed++;
           onProgress?.call('Loaded images $completed/$total');
           developer.log(
@@ -1209,13 +1688,15 @@ class _OutfitScreenState extends State<OutfitScreen>
         ClothingImageFetchResult? pickedResult;
         String? pickedQueryName;
         String? pickedQueryType;
-        for (final minScore in const [4, 2]) {
+        for (final minScore in const [8, 6]) {
           for (final query in queryCandidates) {
             for (final t in typeCandidates) {
               final candidate = await _clothingImageService.fetchClothingImage(
                 name: query,
                 type: t,
+                audience: _audienceSearchValue,
                 index: piece.apiImageIndex,
+                allowGenericFallback: false,
                 minConfidenceScore: minScore,
               );
               if (candidate.bytes != null && candidate.bytes!.isNotEmpty) {
@@ -1318,6 +1799,45 @@ class _OutfitScreenState extends State<OutfitScreen>
     setState(() => _selectedOccasion = index);
   }
 
+  void _onAudienceSelected(int index) {
+    if (_selectedAudience == index) return;
+    setState(() => _selectedAudience = index);
+  }
+
+  String get _audienceSearchValue => _audiences[_selectedAudience].searchValue;
+
+  String _audienceQualifiedSearchName(String value) {
+    var trimmed = value.trim();
+    if (_selectedAudience == 0) {
+      trimmed = trimmed
+          .replaceAll(
+            RegExp(r"\bwomen'?s?\b|\bfemale\b|\bgirls?\b", caseSensitive: false),
+            '',
+          )
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    } else {
+      trimmed = trimmed
+          .replaceAll(
+            RegExp(r"\bmen'?s?\b|\bmale\b|\bboys?\b", caseSensitive: false),
+            '',
+          )
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
+    final lower = trimmed.toLowerCase();
+    final hasTargetAudience = _selectedAudience == 0
+        ? (lower.contains('men') || lower.contains('male') || lower.contains('boy'))
+        : (lower.contains('women') ||
+            lower.contains('female') ||
+            lower.contains('girl'));
+    if (hasTargetAudience) {
+      return trimmed;
+    }
+    final prefix = _selectedAudience == 0 ? "men's" : "women's";
+    return '$prefix $trimmed';
+  }
+
   _WardrobeBucket _bucketForCategory(String? category) {
     final c = (category ?? '').toLowerCase();
     if (c.contains('top') ||
@@ -1344,7 +1864,8 @@ class _OutfitScreenState extends State<OutfitScreen>
         c.contains('boot') ||
         c.contains('loafer') ||
         c.contains('sandal') ||
-        c.contains('heel')) {
+        c.contains('heel') ||
+        c.contains('flat')) {
       return _WardrobeBucket.shoes;
     }
     if (c.contains('jacket') ||
@@ -1830,7 +2351,8 @@ class _OutfitScreenState extends State<OutfitScreen>
     });
     developer.log(
       'Generate outfit started: mode=${_options[_selectedOption].title}, '
-      'occasion=${_occasions[_selectedOccasion]}, temp=$_temperatureC',
+      'occasion=${_occasions[_selectedOccasion]}, '
+      'audience=$_audienceSearchValue, temp=$_temperatureC',
       name: 'OutfitScreen',
     );
 
@@ -1870,6 +2392,7 @@ class _OutfitScreenState extends State<OutfitScreen>
           wardrobeItems: wardrobeItems,
           governorate: locationLabel,
           temperatureC: _temperatureC,
+          audience: _audienceSearchValue,
         );
         _logGeminiSuggestedItems(suggestion);
         developer.log(
@@ -1931,6 +2454,16 @@ class _OutfitScreenState extends State<OutfitScreen>
         wardrobeItems,
         _selectedOption,
       );
+      if (_selectedOption == 1 && !_hasCompleteOutfitStructure(outfitItems)) {
+        developer.log(
+          'Gemini full outfit structure was incomplete; using coordinated local outfit seeds.',
+          name: 'OutfitScreen',
+        );
+        outfitItems = _aiFullOutfitItems(
+          _weatherBandFor(_temperatureC),
+          _occasions[_selectedOccasion],
+        );
+      }
       _logGeminiImageAlignment(
         stage: 'mapped_before_images',
         items: outfitItems,
@@ -2043,16 +2576,81 @@ class _OutfitScreenState extends State<OutfitScreen>
         wardrobeItems: wardrobeItems,
         preselectedIds: preselectedIds,
         requireWardrobeSelection: _selectedOption != 1,
-        onSave: (selectedIds) =>
-            _saveOutfit(items, clothingItemIds: selectedIds),
+        onSave: (selectedIds) async {
+          if (mounted) Navigator.of(context).pop();
+          await _openSaveOutfitPage(
+            items: items,
+            clothingItemIds: selectedIds,
+          );
+        },
       ),
     );
+  }
+
+  Future<void> _openSaveOutfitPage({
+    required List<_OutfitPiece> items,
+    required List<String> clothingItemIds,
+  }) async {
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _SaveOutfitPage(
+          modeName: _options[_selectedOption].title,
+          occasion: _occasions[_selectedOccasion],
+          audienceLabel: _audiences[_selectedAudience].label,
+          items: items,
+          currentTemperatureC: _temperatureC,
+          initialWeatherBand: _weatherBandFor(_temperatureC),
+          onSave: (draft) async {
+            await _saveOutfit(
+              items,
+              clothingItemIds: clothingItemIds,
+              customName: draft.name,
+              plannedDate: draft.plannedDate,
+              suitableWeatherBand: draft.weatherBand,
+              suitableMinTempC: draft.minTempC,
+              suitableMaxTempC: draft.maxTempC,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  String _weatherBandText(_WeatherBand band) {
+    switch (band) {
+      case _WeatherBand.cold:
+        return 'Cold';
+      case _WeatherBand.mild:
+        return 'Mild';
+      case _WeatherBand.hot:
+        return 'Hot';
+    }
+  }
+
+  String _weekdayName(DateTime date) {
+    const names = <String>[
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    return names[(date.weekday - 1).clamp(0, 6)];
   }
 
   /// Save outfit to Supabase
   Future<void> _saveOutfit(
     List<_OutfitPiece> items, {
     required List<String> clothingItemIds,
+    String? customName,
+    DateTime? plannedDate,
+    _WeatherBand? suitableWeatherBand,
+    double? suitableMinTempC,
+    double? suitableMaxTempC,
   }) async {
     try {
       final supabase = SupabaseService();
@@ -2064,16 +2662,35 @@ class _OutfitScreenState extends State<OutfitScreen>
       }
 
       final outfitProvider = context.read<OutfitProvider>();
+      final normalizedPlannedDate = DateTime(
+        (plannedDate ?? DateTime.now()).year,
+        (plannedDate ?? DateTime.now()).month,
+        (plannedDate ?? DateTime.now()).day,
+      );
+      final selectedBand = suitableWeatherBand ?? _weatherBandFor(_temperatureC);
+      final minTemp = suitableMinTempC ?? (_temperatureC - 3);
+      final maxTemp = suitableMaxTempC ?? (_temperatureC + 3);
 
       final notesJson = jsonEncode({
         'generated_at': DateTime.now().toIso8601String(),
         'mode': _options[_selectedOption].title,
         'occasion': _occasions[_selectedOccasion],
+        'audience': _audienceSearchValue,
         'governorate': _selectedGovernorate,
         'temperature_c': _temperatureC,
+        'planned_for_date': normalizedPlannedDate.toIso8601String(),
+        'planned_day_name': _weekdayName(normalizedPlannedDate),
+        'suitable_weather': _weatherBandText(selectedBand),
+        'suitable_temp_min_c': minTemp,
+        'suitable_temp_max_c': maxTemp,
         'items': items
             .map(
-              (e) => {'name': e.name, 'category': e.category, 'emoji': e.emoji},
+              (e) => {
+                'name': e.name,
+                'category': e.category,
+                'emoji': e.emoji,
+                'image_path': e.imagePath,
+              },
             )
             .toList(),
       });
@@ -2081,8 +2698,9 @@ class _OutfitScreenState extends State<OutfitScreen>
       // Create outfit
       await outfitProvider.createOutfit(
         userId: userId,
-        name:
-            '${_options[_selectedOption].title} - ${_occasions[_selectedOccasion]}',
+        name: (customName != null && customName.trim().isNotEmpty)
+            ? customName.trim()
+            : '${_options[_selectedOption].title} - ${_occasions[_selectedOccasion]}',
         occasion: _occasions[_selectedOccasion],
         styleType: _options[_selectedOption].title,
         clothingItemIds: clothingItemIds,
@@ -2105,7 +2723,7 @@ class _OutfitScreenState extends State<OutfitScreen>
         ),
       );
 
-      Navigator.pop(context); // Close bottom sheet
+      Navigator.of(context).maybePop();
     } catch (e) {
       _showError('Failed to save outfit: ${e.toString()}');
     }
@@ -2151,6 +2769,9 @@ class _OutfitScreenState extends State<OutfitScreen>
             emoji: seed.emoji,
             name: seed.name,
             category: seed.category,
+            apiImageName: seed.searchName,
+            apiImageType: seed.type,
+            apiImageIndex: 0,
           ),
         )
         .toList();
@@ -2217,924 +2838,174 @@ class _OutfitScreenState extends State<OutfitScreen>
         ),
 
         // ── Body ─────────────────────────────────────────────────
-        body: SlideTransition(
-          position: _slideAnim,
-          child: FadeTransition(
-            opacity: _fadeAnim,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  children: [
-                    const SizedBox(height: AppSpacing.md),
-
-                    // ── Error message display ─────────────────────
-                    if (_errorMessage != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                        child: Container(
-                          padding: const EdgeInsets.all(AppSpacing.md),
-                          decoration: BoxDecoration(
-                            color: AppColors.error.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(AppRadius.md),
-                            border: Border.all(color: AppColors.error),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.error_outline, color: AppColors.error),
-                              SizedBox(width: AppSpacing.sm),
-                              Expanded(
-                                child: Text(
-                                  _errorMessage!,
-                                  style: TextStyle(
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.primarySoft.withValues(alpha: 0.35),
+                AppColors.background,
+              ],
+              stops: const [0.0, 0.42],
+            ),
+          ),
+          child: SlideTransition(
+            position: _slideAnim,
+            child: FadeTransition(
+              opacity: _fadeAnim,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: AppSpacing.md),
+                      _OutfitHeroCard(
+                        modeTitle: _options[_selectedOption].title,
+                        occasion: _occasions[_selectedOccasion],
+                        audienceLabel: _audiences[_selectedAudience].label,
+                        temperatureC: _temperatureC,
+                        weatherSummary:
+                            _weatherSummary ?? _weatherBandLabel(_temperatureC),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      if (_errorMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                              border: Border.all(
+                                color: AppColors.error.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(AppSpacing.xs),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.error.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.error_outline_rounded,
                                     color: AppColors.error,
-                                    fontSize: 13,
                                   ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: AppSpacing.sm),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: const TextStyle(
+                                      color: AppColors.error,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      _SectionCard(
+                        title: 'Recommendation Mode',
+                        subtitle: 'Choose how your outfit should be generated.',
+                        icon: Icons.tune_rounded,
+                        child: ListView.separated(
+                          physics: const NeverScrollableScrollPhysics(),
+                          shrinkWrap: true,
+                          itemCount: _options.length,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: AppSpacing.sm + 2),
+                          itemBuilder: (context, i) => OutfitOptionCard(
+                            icon: _options[i].icon,
+                            title: _options[i].title,
+                            description: _options[i].description,
+                            isSelected: i == _selectedOption,
+                            onTap: () => _onOptionSelected(i),
                           ),
                         ),
                       ),
-
-                    // ── Option cards ──────────────────────────────
-                    ListView.separated(
-                      physics: const NeverScrollableScrollPhysics(),
-                      shrinkWrap: true,
-                      itemCount: _options.length,
-                      separatorBuilder: (context, index) =>
-                          const SizedBox(height: AppSpacing.sm + 2),
-                      itemBuilder: (context, i) => OutfitOptionCard(
-                        icon: _options[i].icon,
-                        title: _options[i].title,
-                        description: _options[i].description,
-                        isSelected: i == _selectedOption,
-                        onTap: () => _onOptionSelected(i),
-                      ),
-                    ),
-
-                    // ── Occasion quick-filter row ─────────────────
-                    _OccasionRow(
-                      selectedIndex: _selectedOccasion,
-                      occasions: _occasions,
-                      onSelect: _onOccasionSelected,
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-
-                    // Weather context
-                    _WeatherContextCard(
-                      governorates: _governorates,
-                      selectedGovernorate: _selectedGovernorate,
-                      temperatureC: _temperatureC,
-                      isLoading: _isWeatherLoading,
-                      errorMessage: _weatherError,
-                      weatherSummary:
-                          _weatherSummary ?? _weatherBandLabel(_temperatureC),
-                      recommendation: _weatherRecommendation(_temperatureC),
-                      updatedAt: _weatherUpdatedAt,
-                      usingDeviceLocation: _usingDeviceLocation,
-                      locationLabel: _weatherLocationLabel,
-                      onUseMyLocation: () => _loadWeather(preferDevice: true),
-                      onRefresh: () =>
-                          _loadWeather(preferDevice: _usingDeviceLocation),
-                      onGovernorateChanged: (v) {
-                        setState(() {
-                          _selectedGovernorate = v;
-                          _usingDeviceLocation = false;
-                        });
-                        _loadWeather(preferDevice: false);
-                      },
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-
-                    // ── Generate button ───────────────────────────
-                    _GenerateButton(
-                      isGenerating: _isGenerating,
-                      statusText: _generationStatus,
-                      onPressed: _isGenerating ? null : _onGenerateOutfit,
-                    ),
-                    if (_isGenerating &&
-                        _generationStatus?.trim().isNotEmpty == true) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        _generationStatus!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
+                      const SizedBox(height: AppSpacing.md),
+                      _SectionCard(
+                        title: 'Audience',
+                        subtitle: 'Tailor suggestions to men or women style.',
+                        icon: Icons.people_alt_outlined,
+                        child: _AudienceRow(
+                          selectedIndex: _selectedAudience,
+                          audiences: _audiences,
+                          onSelect: _onAudienceSelected,
                         ),
                       ),
+                      const SizedBox(height: AppSpacing.md),
+                      _SectionCard(
+                        title: 'Occasion',
+                        subtitle: 'Pick where you will wear this outfit.',
+                        icon: Icons.event_available_outlined,
+                        child: _OccasionRow(
+                          selectedIndex: _selectedOccasion,
+                          occasions: _occasions,
+                          onSelect: _onOccasionSelected,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _WeatherContextCard(
+                        governorates: _governorates,
+                        selectedGovernorate: _selectedGovernorate,
+                        temperatureC: _temperatureC,
+                        isLoading: _isWeatherLoading,
+                        errorMessage: _weatherError,
+                        weatherSummary:
+                            _weatherSummary ?? _weatherBandLabel(_temperatureC),
+                        recommendation: _weatherRecommendation(_temperatureC),
+                        updatedAt: _weatherUpdatedAt,
+                        usingDeviceLocation: _usingDeviceLocation,
+                        locationLabel: _weatherLocationLabel,
+                        onUseMyLocation: () => _loadWeather(preferDevice: true),
+                        onRefresh: () =>
+                            _loadWeather(preferDevice: _usingDeviceLocation),
+                        onGovernorateChanged: (v) {
+                          setState(() {
+                            _selectedGovernorate = v;
+                            _usingDeviceLocation = false;
+                          });
+                          _loadWeather(preferDevice: false);
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _GenerateButton(
+                        isGenerating: _isGenerating,
+                        statusText: _generationStatus,
+                        onPressed: _isGenerating ? null : _onGenerateOutfit,
+                      ),
+                      if (_isGenerating &&
+                          _generationStatus?.trim().isNotEmpty == true) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          _generationStatus!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.lg),
                     ],
-                    const SizedBox(height: AppSpacing.lg),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-
-        // ── Bottom Navigation Bar ─────────────────────────────────
+        // Bottom Navigation Bar ─────────────────────────────────
         bottomNavigationBar: const AppBottomNavBar(currentIndex: 3),
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Occasion quick-filter row
-// ─────────────────────────────────────────────────────────────────
-class _OccasionRow extends StatelessWidget {
-  final int selectedIndex;
-  final List<String> occasions;
-  final Function(int) onSelect;
-
-  const _OccasionRow({
-    required this.selectedIndex,
-    required this.occasions,
-    required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(bottom: AppSpacing.sm),
-          child: Text(
-            'Occasion',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: List.generate(occasions.length, (i) {
-              final isSelected = i == selectedIndex;
-              return GestureDetector(
-                onTap: () => onSelect(i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.only(right: AppSpacing.sm),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.sm,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected ? AppColors.primary : AppColors.surface,
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                    border: Border.all(
-                      color: isSelected ? AppColors.primary : AppColors.border,
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Text(
-                    occasions[i],
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? Colors.white : AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────
-
-class _WeatherContextCard extends StatelessWidget {
-  final List<String> governorates;
-  final String selectedGovernorate;
-  final double temperatureC;
-  final bool isLoading;
-  final String? errorMessage;
-  final String weatherSummary;
-  final String recommendation;
-  final DateTime? updatedAt;
-  final bool usingDeviceLocation;
-  final String locationLabel;
-  final VoidCallback onUseMyLocation;
-  final VoidCallback onRefresh;
-  final ValueChanged<String> onGovernorateChanged;
-
-  const _WeatherContextCard({
-    required this.governorates,
-    required this.selectedGovernorate,
-    required this.temperatureC,
-    required this.isLoading,
-    required this.errorMessage,
-    required this.weatherSummary,
-    required this.recommendation,
-    required this.updatedAt,
-    required this.usingDeviceLocation,
-    required this.locationLabel,
-    required this.onUseMyLocation,
-    required this.onRefresh,
-    required this.onGovernorateChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Weather Context',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Use today\'s weather to guide your outfit generation.',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              GestureDetector(
-                onTap: onRefresh,
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: const Icon(
-                    Icons.refresh_rounded,
-                    size: 18,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              const Icon(Icons.location_on_outlined, size: 18),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  locationLabel,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              TextButton(
-                onPressed: isLoading ? null : onUseMyLocation,
-                child: const Text('Use My Location'),
-              ),
-            ],
-          ),
-          if (!usingDeviceLocation) ...[
-            const SizedBox(height: AppSpacing.sm),
-            DropdownButtonFormField<String>(
-              initialValue: selectedGovernorate,
-              items: governorates
-                  .map((g) => DropdownMenuItem(value: g, child: Text(g)))
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) onGovernorateChanged(v);
-              },
-              decoration: InputDecoration(
-                labelText: 'Governorate',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md,
-                  vertical: AppSpacing.sm,
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.sm + 2),
-          if (isLoading)
-            Row(
-              children: [
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 8),
-                const Text('Loading current weather...'),
-              ],
-            )
-          else ...[
-            Row(
-              children: [
-                const Icon(Icons.thermostat_rounded, size: 18),
-                const SizedBox(width: 6),
-                Text(
-                  '${temperatureC.toStringAsFixed(1)} C',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  weatherSummary,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-            if (updatedAt != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Updated at ${_formatTime(updatedAt!)}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ],
-          if (errorMessage != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              errorMessage!,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.error,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            recommendation,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatTime(DateTime time) {
-    final local = time.toLocal();
-    final hh = local.hour.toString().padLeft(2, '0');
-    final mm = local.minute.toString().padLeft(2, '0');
-    return '$hh:$mm';
-  }
-}
-
-// Generate Outfit Button
-// ─────────────────────────────────────────────────────────────────
-class _GenerateButton extends StatelessWidget {
-  final bool isGenerating;
-  final String? statusText;
-  final VoidCallback? onPressed;
-
-  const _GenerateButton({
-    required this.isGenerating,
-    required this.statusText,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.6),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-          ),
-          elevation: 0,
-        ),
-        child: isGenerating
-            ? Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    'Generating outfit…',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              )
-            : const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.auto_awesome_rounded,
-                    size: 20,
-                    color: Colors.white,
-                  ),
-                  SizedBox(width: AppSpacing.sm),
-                  Text(
-                    'Generate Outfit',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Generated Outfit Result Bottom Sheet
-// ─────────────────────────────────────────────────────────────────
-class _GeneratedOutfitSheet extends StatefulWidget {
-  final String modeName;
-  final String occasion;
-  final List<_OutfitPiece> items;
-  final List<Map<String, dynamic>> wardrobeItems;
-  final List<String> preselectedIds;
-  final bool requireWardrobeSelection;
-  final Future<void> Function(List<String>) onSave;
-
-  const _GeneratedOutfitSheet({
-    required this.modeName,
-    required this.occasion,
-    required this.items,
-    required this.wardrobeItems,
-    required this.preselectedIds,
-    required this.requireWardrobeSelection,
-    required this.onSave,
-  });
-
-  @override
-  State<_GeneratedOutfitSheet> createState() => _GeneratedOutfitSheetState();
-}
-
-class _GeneratedOutfitSheetState extends State<_GeneratedOutfitSheet> {
-  final Set<String> _selectedIds = {};
-  String? _errorText;
-
-  Widget _pieceVisual(_OutfitPiece piece) {
-    if (piece.imageBytes != null && piece.imageBytes!.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.memory(
-          piece.imageBytes!,
-          width: 32,
-          height: 32,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              Text(piece.emoji, style: const TextStyle(fontSize: 26)),
-        ),
-      );
-    }
-
-    final path = piece.imagePath?.trim();
-    if (path != null && path.isNotEmpty) {
-      final isNetwork =
-          path.startsWith('http://') || path.startsWith('https://');
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: isNetwork
-            ? Image.network(
-                path,
-                width: 32,
-                height: 32,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    Text(piece.emoji, style: const TextStyle(fontSize: 26)),
-              )
-            : Image.asset(
-                path,
-                width: 32,
-                height: 32,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    Text(piece.emoji, style: const TextStyle(fontSize: 26)),
-              ),
-      );
-    }
-    return Text(piece.emoji, style: const TextStyle(fontSize: 26));
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.preselectedIds.isNotEmpty) {
-      final validIds = widget.wardrobeItems
-          .map((e) => e['id'])
-          .whereType<String>()
-          .toSet();
-      _selectedIds.addAll(
-        widget.preselectedIds.where((id) => validIds.contains(id)),
-      );
-    }
-    if (widget.requireWardrobeSelection && widget.wardrobeItems.length == 1) {
-      final id = widget.wardrobeItems.first['id'];
-      if (id is String) _selectedIds.add(id);
-    }
-  }
-
-  bool get _needsSelection =>
-      widget.requireWardrobeSelection && widget.wardrobeItems.isNotEmpty;
-
-  void _toggleSelect(String id) {
-    setState(() {
-      _selectedIds.contains(id)
-          ? _selectedIds.remove(id)
-          : _selectedIds.add(id);
-      _errorText = null;
-    });
-  }
-
-  Future<void> _handleSave() async {
-    if (_needsSelection && _selectedIds.isEmpty) {
-      setState(() => _errorText = 'Select at least one wardrobe item to link.');
-      return;
-    }
-    await widget.onSave(_selectedIds.toList());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final wardrobeItems = widget.wardrobeItems;
-
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
-      ),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.xl,
-        left: AppSpacing.lg,
-        right: AppSpacing.lg,
-        top: AppSpacing.md,
-      ),
-      child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Drag handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(AppRadius.full),
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-
-            // Header
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySoft,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                  ),
-                  child: const Icon(
-                    Icons.auto_awesome_rounded,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Today's Outfit",
-                        style: AppTextStyles.headlineSmall,
-                      ),
-                      Text(
-                        '${widget.modeName} • ${widget.occasion}',
-                        style: AppTextStyles.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceAlt,
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                    child: const Icon(
-                      Icons.refresh_rounded,
-                      size: 20,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-
-            // Outfit pieces grid
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: AppSpacing.sm,
-                crossAxisSpacing: AppSpacing.sm,
-                childAspectRatio: 2.4,
-              ),
-              itemCount: widget.items.length,
-              itemBuilder: (context, i) {
-                final piece = widget.items[i];
-                return Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                  child: Row(
-                    children: [
-                      _pieceVisual(piece),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              piece.name,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              piece.category,
-                              style: AppTextStyles.labelSmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: AppSpacing.md),
-
-            if (widget.requireWardrobeSelection) ...[
-              const Text(
-                'Link Items From Your Wardrobe',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-
-              if (wardrobeItems.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                  child: const Text(
-                    'No wardrobe items yet. You can still save the suggestion.',
-                    style: AppTextStyles.bodySmall,
-                  ),
-                )
-              else
-                Wrap(
-                  spacing: AppSpacing.sm,
-                  runSpacing: AppSpacing.sm,
-                  children: wardrobeItems.map((item) {
-                    final id = item['id'] as String?;
-                    final name = item['name'] as String? ?? 'Item';
-                    final emoji = item['emoji'] as String? ?? '\u{1F455}';
-                    final selected = id != null && _selectedIds.contains(id);
-                    return FilterChip(
-                      label: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 160),
-                        child: Text(
-                          '$emoji $name',
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      selected: selected,
-                      onSelected: id == null ? null : (_) => _toggleSelect(id),
-                      selectedColor: AppColors.primary.withValues(alpha: 0.15),
-                      checkmarkColor: AppColors.primary,
-                      side: BorderSide(
-                        color: selected ? AppColors.primary : AppColors.border,
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-              if (_errorText != null) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  _errorText!,
-                  style: const TextStyle(
-                    color: AppColors.error,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: AppSpacing.md),
-            ],
-
-            // Save button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _handleSave,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                ),
-                child: const Text(
-                  'Save Outfit',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Local data models
-// ─────────────────────────────────────────────────────────────────
-enum _WardrobeBucket { top, bottom, shoes, jacket, accessory, other }
-
-enum _WeatherBand { cold, mild, hot }
-
-class _OutfitOption {
-  final IconData icon;
-  final String title;
-  final String description;
-  const _OutfitOption({
-    required this.icon,
-    required this.title,
-    required this.description,
-  });
-}
-
-class _ApiSuggestionSeed {
-  final String searchName;
-  final String type;
-  final String name;
-  final String category;
-  final String emoji;
-
-  const _ApiSuggestionSeed({
-    required this.searchName,
-    required this.type,
-    required this.name,
-    required this.category,
-    required this.emoji,
-  });
-}
-
-class _PreviewLoadResult {
-  final List<_OutfitPiece> items;
-  final String? firstApiError;
-
-  const _PreviewLoadResult({required this.items, required this.firstApiError});
-}
-
-class _OutfitPiece {
-  final String emoji;
-  final String name;
-  final String category;
-  final String? imagePath;
-  final Uint8List? imageBytes;
-  final String? wardrobeId;
-  final String? apiImageName;
-  final String? apiImageType;
-  final int? apiImageIndex;
-  final String? apiSourceImageUrl;
-  final String? apiSearchQuery;
-  final String? apiSearchEngine;
-  final int? apiResultIndex;
-  final bool usedGenericFallback;
-  const _OutfitPiece({
-    required this.emoji,
-    required this.name,
-    required this.category,
-    this.imagePath,
-    this.imageBytes,
-    this.wardrobeId,
-    this.apiImageName,
-    this.apiImageType,
-    this.apiImageIndex,
-    this.apiSourceImageUrl,
-    this.apiSearchQuery,
-    this.apiSearchEngine,
-    this.apiResultIndex,
-    this.usedGenericFallback = false,
-  });
-
-  _OutfitPiece copyWith({
-    String? emoji,
-    String? name,
-    String? category,
-    String? imagePath,
-    Uint8List? imageBytes,
-    String? wardrobeId,
-    String? apiImageName,
-    String? apiImageType,
-    int? apiImageIndex,
-    String? apiSourceImageUrl,
-    String? apiSearchQuery,
-    String? apiSearchEngine,
-    int? apiResultIndex,
-    bool? usedGenericFallback,
-  }) {
-    return _OutfitPiece(
-      emoji: emoji ?? this.emoji,
-      name: name ?? this.name,
-      category: category ?? this.category,
-      imagePath: imagePath ?? this.imagePath,
-      imageBytes: imageBytes ?? this.imageBytes,
-      wardrobeId: wardrobeId ?? this.wardrobeId,
-      apiImageName: apiImageName ?? this.apiImageName,
-      apiImageType: apiImageType ?? this.apiImageType,
-      apiImageIndex: apiImageIndex ?? this.apiImageIndex,
-      apiSourceImageUrl: apiSourceImageUrl ?? this.apiSourceImageUrl,
-      apiSearchQuery: apiSearchQuery ?? this.apiSearchQuery,
-      apiSearchEngine: apiSearchEngine ?? this.apiSearchEngine,
-      apiResultIndex: apiResultIndex ?? this.apiResultIndex,
-      usedGenericFallback: usedGenericFallback ?? this.usedGenericFallback,
     );
   }
 }

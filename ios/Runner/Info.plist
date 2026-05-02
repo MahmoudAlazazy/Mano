@@ -68,6 +68,8 @@
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We need access to your photos to set a profile picture</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>We need permission to save generated avatar photos to your library.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>We need camera access to take a profile picture</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
