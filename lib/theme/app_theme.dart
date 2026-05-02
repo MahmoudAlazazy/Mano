@@ -177,6 +177,7 @@ class AppTheme {
           fontSize:   18,
           fontWeight: FontWeight.w700,
           color:      AppColors.textPrimary,
+          fontFamily: 'ArefRuqaa',
         ),
         iconTheme: IconThemeData(color: AppColors.textPrimary),
       ),

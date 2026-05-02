@@ -40,3 +40,10 @@ flutter:
 
   assets:
     - assets/images/
+
+  fonts:
+    - family: ArefRuqaa
+      fonts:
+        - asset: assets/fonts/ArefRuqaa-Regular.ttf
+        - asset: assets/fonts/ArefRuqaa-Bold.ttf
+          weight: 700

@@ -40,7 +40,13 @@ class GeminiConfig {
   );
   static const String _geminiApiKeys = String.fromEnvironment(
     'GEMINI_API_KEYS',
-    defaultValue: '',
+    defaultValue:
+        'AIzaSyAQAv0B5mq-0PGWnveYXaKfoik0tUwdDzs,'
+        'AIzaSyDH8szvbK_PdL6jlI6r0SXaQgH6SzUKyBg,'
+        'AIzaSyCWYG4FEhdjf2-IdM38FAV6wU73en0wIWU,'
+        'AIzaSyDRKy7RNMVZ7-HLpa7e1Ctbl3X9Xtivz4w,'
+        'AIzaSyDXxyB1WgIV6KKS06yPz4PzgMAS2Mj5014,'
+        'AIzaSyA0xShal30Sbg10pyBXknYmnCY6KdNgbIF',
   );
 
   static const String _openRouterModel = String.fromEnvironment(

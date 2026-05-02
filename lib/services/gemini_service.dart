@@ -106,11 +106,15 @@ class GeminiService {
   Future<Map<String, dynamic>> generateContent({
     required Map<String, dynamic> body,
     String? model,
+    bool geminiOnly = false,
   }) async {
     GeminiConfig.validate();
 
     GeminiException? lastError;
-    final routes = _buildProviderRoutes(modelOverride: model);
+    final routes = _buildProviderRoutes(
+      modelOverride: model,
+      geminiOnly: geminiOnly,
+    );
 
     for (var i = 0; i < routes.length; i++) {
       final route = routes[i];
@@ -202,7 +206,19 @@ class GeminiService {
     throw lastError ?? const GeminiException('All AI keys exhausted');
   }
 
-  List<_ProviderRoute> _buildProviderRoutes({String? modelOverride}) {
+  List<_ProviderRoute> _buildProviderRoutes({
+    String? modelOverride,
+    bool geminiOnly = false,
+  }) {
+    if (geminiOnly) {
+      return [
+        _routeForProvider(
+          provider: 'gemini',
+          model: modelOverride,
+        ),
+      ];
+    }
+
     final primary = GeminiConfig.provider == 'openrouter'
         ? 'openrouter'
         : 'gemini';

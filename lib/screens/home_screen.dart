@@ -987,6 +987,21 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ),
+          Positioned(
+            right: AppSpacing.md,
+            bottom: AppSpacing.md,
+            child: SafeArea(
+              top: false,
+              child: FloatingActionButton(
+                heroTag: 'home_chat_fab',
+                onPressed: () =>
+                    Navigator.pushNamed(context, AppRoutes.fashionChatbot),
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                child: const Icon(Icons.chat_bubble_rounded),
+              ),
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: const AppBottomNavBar(currentIndex: 0),

@@ -17,6 +17,7 @@ import 'screens/profile_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/try_on_screen.dart';
 import 'screens/admin_dashboard_screen.dart';
+import 'features/chatbot/chatbot_screen.dart';
 
 import 'config/supabase_config.dart';
 
@@ -82,6 +83,7 @@ class _AIOutfitAdvisorAppState extends State<AIOutfitAdvisorApp> {
           AppRoutes.profile:  (_) => const ProfileScreen(),
           AppRoutes.register: (_) => const RegisterScreen(),
           AppRoutes.adminDashboard: (_) => const AdminDashboardScreen(),
+          AppRoutes.fashionChatbot: (_) => const ChatbotScreen(),
 
         },
       ),
@@ -103,4 +105,5 @@ class AppRoutes {
   static const String tryOn    = '/try-on';
   static const String profile  = '/profile';
   static const String adminDashboard = '/admin-dashboard';
+  static const String fashionChatbot = '/fashion-chatbot';
 }

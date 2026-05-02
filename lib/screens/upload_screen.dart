@@ -32,14 +32,19 @@ class _UploadScreenState extends State<UploadScreen>
   late final Animation<Offset> _slideAnim;
 
   static const List<_CategoryDef> _categories = [
-    _CategoryDef(emoji: '\u{1F455}', label: 'Tops'),
-    _CategoryDef(emoji: '\u{1F456}', label: 'Bottoms'),
-    _CategoryDef(emoji: '\u{1F45F}', label: 'Shoes'),
-    _CategoryDef(emoji: '\u{1F9E5}', label: 'Jackets'),
-    _CategoryDef(emoji: '\u{1F457}', label: 'Dresses'),
-    _CategoryDef(emoji: '\u{231A}', label: 'Accessories'),
-  ];
-
+  _CategoryDef(emoji: '\u{1F457}', label: 'Dresses'),     
+  _CategoryDef(emoji: '\u{1F455}', label: 'Tops'),        
+  _CategoryDef(emoji: '\u{1F456}', label: 'Pants'),       
+  _CategoryDef(emoji: '\u{1F457}', label: 'Skirts'),      
+  _CategoryDef(emoji: '\u{1F45F}', label: 'Shoes'),       
+  _CategoryDef(emoji: '\u{1F9E5}', label: 'Jackets'),     
+  _CategoryDef(emoji: '\u{1F9E3}', label: 'Scarves'),     
+  _CategoryDef(emoji: '\u{1F9D5}', label: 'Headscarves'), // 🧕
+  _CategoryDef(emoji: '\u{1F9F3}', label: 'Handbags'),    
+  _CategoryDef(emoji: '\u{1F460}', label: 'Heels'),       
+  _CategoryDef(emoji: '\u{1F48D}', label: 'Accessories'), 
+  _CategoryDef(emoji: '\u{1F9E5}', label: 'Outerwear'),   
+];
   @override
   void initState() {
     super.initState();
