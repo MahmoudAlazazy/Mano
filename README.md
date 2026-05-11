@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/images/logo.png" alt="MANO Logo" width="120" />
+  <img src="assets/images/logo.png" alt="Outfit Advisor Logo" width="120" />
 </p>
 
-<h1 align="center">MANO - AI Outfit Advisor</h1>
+<h1 align="center">Outfit Advisor - AI Outfit Advisor</h1>
 
 <p align="center">
   Smart wardrobe management, weather-based outfit recommendations, and virtual try-on in one Flutter app.
@@ -19,7 +19,7 @@
 
 ## Overview
 
-MANO is a Flutter app that helps users:
+Outfit Advisor is a Flutter app that helps users:
 
 - Manage a personal wardrobe
 - Get weather-aware style suggestions
@@ -50,7 +50,7 @@ The project also includes a local FastAPI clothing image service used to fetch p
 ## Project Structure
 
 ```text
-mano/
+Outfit Advisor/
 |-- lib/
 |   |-- config/           # dart-define and service configs
 |   |-- models/
