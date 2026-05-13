@@ -611,13 +611,13 @@ class _TryOnScreenState extends State<TryOnScreen> {
       final ts = DateTime.now().millisecondsSinceEpoch;
       // Use a timestamped name to avoid collisions in the system temp directory.
       tempFile = File(
-        '${Directory.systemTemp.path}${Platform.pathSeparator}mano_try_on_$ts.$ext',
+        '${Directory.systemTemp.path}${Platform.pathSeparator}maoutfitadvisor_no_try_on_$ts.$ext',
       );
       await tempFile.writeAsBytes(bytes, flush: true);
 
       final saveResult = await ImageGallerySaverPlus.saveFile(
         tempFile.path,
-        name: 'mano_try_on_$ts',
+        name: 'outfitadvisor_no_try_on_$ts',
         isReturnPathOfIOS: true,
       );
 
@@ -886,7 +886,7 @@ class _TryOnScreenState extends State<TryOnScreen> {
       if (!mounted) return;
       setState(() => _generationStatus = 'Preparing avatar...');
 
-      tempDir = await Directory.systemTemp.createTemp('mano_try_on_');
+      tempDir = await Directory.systemTemp.createTemp('outfitadvisor_try_on_');
       final avatarPath = await _materializeAvatarFilePath(tempDir);
 
       if (!mounted) return;

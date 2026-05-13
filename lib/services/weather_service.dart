@@ -169,7 +169,7 @@ class WeatherService {
       final response = await http.get(
         uri,
         headers: const {
-          'User-Agent': 'mano-weather/1.0',
+          'User-Agent': 'outfitadvisor-weather/1.0',
           'Accept': 'application/json',
         },
       );

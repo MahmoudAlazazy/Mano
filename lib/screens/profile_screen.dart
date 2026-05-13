@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mano/providers/supabase_provider.dart';
+import 'package:outfitadvisor/providers/supabase_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../theme/app_theme.dart';

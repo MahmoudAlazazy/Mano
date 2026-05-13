@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:mano/providers/supabase_provider.dart';
-import 'package:mano/services/supabase_service.dart';
+import 'package:outfitadvisor/providers/supabase_provider.dart';
+import 'package:outfitadvisor/services/supabase_service.dart';
 import 'package:provider/provider.dart';
 
 import 'theme/app_theme.dart';

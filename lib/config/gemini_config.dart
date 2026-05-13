@@ -141,7 +141,7 @@ class GeminiConfig {
   /// Identifies this app in OpenRouter's usage dashboard.
   static const String openRouterTitle = String.fromEnvironment(
     'OPENROUTER_X_TITLE',
-    defaultValue: 'Mano',
+    defaultValue: 'outfitadvisor',
   );
 
   // ── Provider Resolution ───────────────────────────────────────────

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
-import 'package:mano/providers/supabase_provider.dart';
+import 'package:outfitadvisor/providers/supabase_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import '../main.dart' show AppRoutes;
@@ -17,7 +17,6 @@ part 'outfit_screen/ui_components.dart';
 part 'outfit_screen/generated_outfit_sheet.dart';
 part 'outfit_screen/models.dart';
 part 'outfit_screen/save_outfit_page.dart';
-
 
 /// The main outfit generation screen.
 ///
@@ -35,13 +34,13 @@ class OutfitScreen extends StatefulWidget {
 class _OutfitScreenState extends State<OutfitScreen>
     with SingleTickerProviderStateMixin {
   // ── Selection state ───────────────────────────────────────────
-  int _selectedOption = 0;    // index into [_options]
-  int _selectedOccasion = 0;  // index into [_occasions]
-  int _selectedAudience = 0;  // 0 = Men, 1 = Women
+  int _selectedOption = 0; // index into [_options]
+  int _selectedOccasion = 0; // index into [_occasions]
+  int _selectedAudience = 0; // 0 = Men, 1 = Women
 
   // ── Generation state ──────────────────────────────────────────
   bool _isGenerating = false;
-  String? _generationStatus;  // progress label shown below the button
+  String? _generationStatus; // progress label shown below the button
   String? _errorMessage;
 
   // ── Weather state ─────────────────────────────────────────────
@@ -683,7 +682,9 @@ class _OutfitScreenState extends State<OutfitScreen>
     if (text.contains('watch')) return 'watch';
     if (text.contains('sunglass')) return 'sunglasses';
     if (text.contains('cap') || text.contains('hat')) return 'cap';
-    if (text.contains('bag') || text.contains('tote') || text.contains('clutch')) {
+    if (text.contains('bag') ||
+        text.contains('tote') ||
+        text.contains('clutch')) {
       return 'bag';
     }
     if (text.contains('boot')) return 'boots';
@@ -1948,7 +1949,10 @@ class _OutfitScreenState extends State<OutfitScreen>
     if (_selectedAudience == 0) {
       trimmed = trimmed
           .replaceAll(
-            RegExp(r"\bwomen'?s?\b|\bfemale\b|\bgirls?\b", caseSensitive: false),
+            RegExp(
+              r"\bwomen'?s?\b|\bfemale\b|\bgirls?\b",
+              caseSensitive: false,
+            ),
             '',
           )
           .replaceAll(RegExp(r'\s+'), ' ')
@@ -1964,10 +1968,12 @@ class _OutfitScreenState extends State<OutfitScreen>
     }
     final lower = trimmed.toLowerCase();
     final hasTargetAudience = _selectedAudience == 0
-        ? (lower.contains('men') || lower.contains('male') || lower.contains('boy'))
+        ? (lower.contains('men') ||
+              lower.contains('male') ||
+              lower.contains('boy'))
         : (lower.contains('women') ||
-            lower.contains('female') ||
-            lower.contains('girl'));
+              lower.contains('female') ||
+              lower.contains('girl'));
     if (hasTargetAudience) {
       return trimmed;
     }
@@ -2142,21 +2148,49 @@ class _OutfitScreenState extends State<OutfitScreen>
     switch (occ) {
       case 'business':
         return const [
-          'business', 'office', 'formal', 'shirt', 'trouser',
-          'blazer', 'loafer', 'oxford', 'derby',
+          'business',
+          'office',
+          'formal',
+          'shirt',
+          'trouser',
+          'blazer',
+          'loafer',
+          'oxford',
+          'derby',
         ];
       case 'formal':
         return const [
-          'formal', 'suit', 'blazer', 'shirt', 'oxford', 'derby', 'heel', 'dress',
+          'formal',
+          'suit',
+          'blazer',
+          'shirt',
+          'oxford',
+          'derby',
+          'heel',
+          'dress',
         ];
       case 'sport':
         return const [
-          'sport', 'gym', 'running', 'training', 'jogger',
-          'track', 'sneaker', 'athletic', 'dry-fit',
+          'sport',
+          'gym',
+          'running',
+          'training',
+          'jogger',
+          'track',
+          'sneaker',
+          'athletic',
+          'dry-fit',
         ];
       default:
         return const [
-          'casual', 'tee', 'shirt', 'jean', 'chino', 'sneaker', 'hoodie', 'cotton',
+          'casual',
+          'tee',
+          'shirt',
+          'jean',
+          'chino',
+          'sneaker',
+          'hoodie',
+          'cotton',
         ];
     }
   }
@@ -2571,6 +2605,14 @@ class _OutfitScreenState extends State<OutfitScreen>
           wardrobeItems: wardrobeItems,
           temperatureC: _temperatureC,
         );
+        if (_selectedOption == 2) {
+          fallbackItems = _enforceMixAndMatchComposition(
+            items: fallbackItems,
+            wardrobeItems: wardrobeItems,
+            band: _weatherBandFor(_temperatureC),
+            occasion: _occasions[_selectedOccasion],
+          );
+        }
         _setGenerationStatus('Loading fallback outfit images...');
         fallbackItems = await _enrichAiItemsWithImages(
           fallbackItems,
@@ -2604,7 +2646,19 @@ class _OutfitScreenState extends State<OutfitScreen>
           'Fallback outfit ready in ${totalStopwatch.elapsedMilliseconds}ms',
           name: 'OutfitScreen',
         );
-        _showGeneratedOutfitSheet(fallbackItems, wardrobeItems, const []);
+        final fallbackSelectedIds = _selectedOption == 1
+            ? const <String>[]
+            : fallbackItems
+                  .map((piece) => piece.wardrobeId)
+                  .whereType<String>()
+                  .where((id) => id.isNotEmpty)
+                  .toSet()
+                  .toList();
+        _showGeneratedOutfitSheet(
+          fallbackItems,
+          wardrobeItems,
+          fallbackSelectedIds,
+        );
         return;
       }
 
@@ -2614,6 +2668,14 @@ class _OutfitScreenState extends State<OutfitScreen>
         wardrobeItems,
         _selectedOption,
       );
+      if (_selectedOption == 2) {
+        outfitItems = _enforceMixAndMatchComposition(
+          items: outfitItems,
+          wardrobeItems: wardrobeItems,
+          band: _weatherBandFor(_temperatureC),
+          occasion: _occasions[_selectedOccasion],
+        );
+      }
       // If the full-outfit response was structurally incomplete, replace it
       // with locally-coordinated seeds rather than showing a broken outfit.
       if (_selectedOption == 1 && !_hasCompleteOutfitStructure(outfitItems)) {
@@ -2663,7 +2725,16 @@ class _OutfitScreenState extends State<OutfitScreen>
 
       // Wardrobe IDs pre-selected in the bottom sheet (not relevant for full AI).
       final preselectedIds = _selectedOption != 1
-          ? _filterWardrobeIds(suggestion.suggestedWardrobeIds, wardrobeItems)
+          ? (_selectedOption == 2
+                ? outfitItems
+                      .map((piece) => piece.wardrobeId)
+                      .whereType<String>()
+                      .where((id) => id.isNotEmpty)
+                      .toList()
+                : _filterWardrobeIds(
+                    suggestion.suggestedWardrobeIds,
+                    wardrobeItems,
+                  ))
           : const <String>[];
 
       if (!mounted) return;
@@ -2699,7 +2770,7 @@ class _OutfitScreenState extends State<OutfitScreen>
   ///
   /// - Mode 0 (Wardrobe): picks from real wardrobe items; falls back to AI seeds.
   /// - Mode 1 (Full AI): returns AI-seed pieces directly.
-  /// - Mode 2 (Mix & Match): combines up to 2 real items with AI seeds.
+  /// - Mode 2 (Mix & Match): combines 1-2 real items with AI seeds.
   List<_OutfitPiece> _generateOutfitItems({
     required int mode,
     required String occasion,
@@ -2714,15 +2785,172 @@ class _OutfitScreenState extends State<OutfitScreen>
     } else if (mode == 1) {
       return _aiFullOutfitItems(band, occasion);
     } else {
-      // Mix & Match: anchor with wardrobe pieces, fill gaps with AI.
       final realItems = _buildOutfitFromWardrobe(wardrobeItems, band, occasion);
-      if (realItems.length >= 2) {
-        final aiItems = _mixAndMatchItems(band, occasion);
-        final combined = <_OutfitPiece>[...realItems.take(2), ...aiItems];
-        return combined.take(4).toList();
-      }
-      return _mixAndMatchItems(band, occasion);
+      final aiItems = _mixAndMatchItems(band, occasion);
+      final seeded = <_OutfitPiece>[...realItems.take(2), ...aiItems];
+      return _enforceMixAndMatchComposition(
+        items: seeded,
+        wardrobeItems: wardrobeItems,
+        band: band,
+        occasion: occasion,
+      );
     }
+  }
+
+  /// Ensures Mix & Match always returns a blended outfit:
+  /// - Use 1 or 2 wardrobe anchors (any category).
+  /// - Fill remaining slots with AI pieces that complete missing buckets.
+  List<_OutfitPiece> _enforceMixAndMatchComposition({
+    required List<_OutfitPiece> items,
+    required List<Map<String, dynamic>> wardrobeItems,
+    required _WeatherBand band,
+    required String occasion,
+  }) {
+    final desiredBuckets = _desiredBucketsForOccasion(
+      band: band,
+      occasion: occasion,
+    );
+
+    final wardrobeCandidates = <_OutfitPiece>[];
+    final wardrobeIds = <String>{};
+    void addWardrobeCandidate(_OutfitPiece piece) {
+      final id = piece.wardrobeId;
+      if (id == null || id.isEmpty) return;
+      if (wardrobeIds.add(id)) {
+        wardrobeCandidates.add(piece);
+      }
+    }
+
+    for (final piece in items) {
+      addWardrobeCandidate(piece);
+    }
+    for (final piece in _buildOutfitFromWardrobe(
+      wardrobeItems,
+      band,
+      occasion,
+    )) {
+      addWardrobeCandidate(piece);
+    }
+
+    final inputWardrobeCount = items
+        .where(
+          (piece) => piece.wardrobeId != null && piece.wardrobeId!.isNotEmpty,
+        )
+        .length;
+    final targetWardrobeCount = wardrobeCandidates.isEmpty
+        ? 0
+        : (inputWardrobeCount >= 2 ? 2 : 1);
+    final selectedWardrobe = <_OutfitPiece>[];
+    final selectedWardrobeIds = <String>{};
+
+    void selectWardrobe(_OutfitPiece piece) {
+      final id = piece.wardrobeId;
+      if (id == null || id.isEmpty) return;
+      if (selectedWardrobeIds.add(id)) {
+        selectedWardrobe.add(piece);
+      }
+    }
+
+    _OutfitPiece? firstByBucket(_WardrobeBucket bucket) {
+      for (final piece in wardrobeCandidates) {
+        final id = piece.wardrobeId;
+        if (id == null || selectedWardrobeIds.contains(id)) continue;
+        if (_bucketForCategory(piece.category) == bucket) return piece;
+      }
+      return null;
+    }
+
+    for (final bucket in desiredBuckets) {
+      if (selectedWardrobe.length >= targetWardrobeCount) break;
+      final next = firstByBucket(bucket);
+      if (next != null) selectWardrobe(next);
+    }
+
+    for (final piece in wardrobeCandidates) {
+      if (selectedWardrobe.length >= targetWardrobeCount) break;
+      selectWardrobe(piece);
+    }
+
+    final aiCandidates = <_OutfitPiece>[];
+    final aiCandidateKeys = <String>{};
+    String aiKey(_OutfitPiece piece) {
+      final imageRef = piece.apiImageName ?? piece.imagePath ?? '';
+      return '${piece.name}|${piece.category}|$imageRef'.toLowerCase();
+    }
+
+    void addAiCandidate(_OutfitPiece piece) {
+      if (piece.wardrobeId != null && piece.wardrobeId!.isNotEmpty) return;
+      final key = aiKey(piece);
+      if (aiCandidateKeys.add(key)) {
+        aiCandidates.add(piece);
+      }
+    }
+
+    for (final piece in items) {
+      addAiCandidate(piece);
+    }
+    for (final piece in _mixAndMatchItems(band, occasion)) {
+      addAiCandidate(piece);
+    }
+
+    final targetAiCount = 4 - selectedWardrobe.length;
+    final selectedAi = <_OutfitPiece>[];
+    final selectedAiKeys = <String>{};
+    final occupiedBuckets = selectedWardrobe
+        .map((piece) => _bucketForCategory(piece.category))
+        .toSet();
+
+    bool selectAiByBucket(_WardrobeBucket bucket) {
+      for (final candidate in aiCandidates) {
+        final key = aiKey(candidate);
+        if (selectedAiKeys.contains(key)) continue;
+        if (_bucketForCategory(candidate.category) == bucket) {
+          selectedAiKeys.add(key);
+          selectedAi.add(candidate);
+          occupiedBuckets.add(bucket);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    for (final bucket in desiredBuckets) {
+      if (selectedAi.length >= targetAiCount) break;
+      if (occupiedBuckets.contains(bucket)) continue;
+      selectAiByBucket(bucket);
+    }
+
+    while (selectedAi.length < targetAiCount) {
+      _OutfitPiece? preferred;
+      for (final candidate in aiCandidates) {
+        final key = aiKey(candidate);
+        if (selectedAiKeys.contains(key)) continue;
+        final bucket = _bucketForCategory(candidate.category);
+        if (!occupiedBuckets.contains(bucket)) {
+          preferred = candidate;
+          break;
+        }
+      }
+      preferred ??= aiCandidates.firstWhere(
+        (candidate) => !selectedAiKeys.contains(aiKey(candidate)),
+        orElse: () => _OutfitPiece(
+          emoji: '\u{2728}',
+          name: 'AI Suggestion',
+          category: 'Accessory',
+          apiImageName: _audienceQualifiedSearchName('minimal accessory'),
+          apiImageType: 'accessory',
+          apiImageIndex: 0,
+        ),
+      );
+
+      final key = aiKey(preferred);
+      if (!selectedAiKeys.add(key)) break;
+      selectedAi.add(preferred);
+      occupiedBuckets.add(_bucketForCategory(preferred.category));
+    }
+
+    final out = <_OutfitPiece>[...selectedWardrobe, ...selectedAi];
+    return out.take(4).toList();
   }
 
   // ── Generated outfit bottom sheet ─────────────────────────────
@@ -2749,10 +2977,7 @@ class _OutfitScreenState extends State<OutfitScreen>
         requireWardrobeSelection: _selectedOption != 1,
         onSave: (selectedIds) async {
           if (mounted) Navigator.of(context).pop();
-          await _openSaveOutfitPage(
-            items: items,
-            clothingItemIds: selectedIds,
-          );
+          await _openSaveOutfitPage(items: items, clothingItemIds: selectedIds);
         },
       ),
     );
@@ -2807,8 +3032,13 @@ class _OutfitScreenState extends State<OutfitScreen>
   /// Returns the full English weekday name for [date].
   String _weekdayName(DateTime date) {
     const names = <String>[
-      'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-      'Friday', 'Saturday', 'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
     ];
     return names[(date.weekday - 1).clamp(0, 6)];
   }
@@ -2843,7 +3073,8 @@ class _OutfitScreenState extends State<OutfitScreen>
         (plannedDate ?? DateTime.now()).month,
         (plannedDate ?? DateTime.now()).day,
       );
-      final selectedBand = suitableWeatherBand ?? _weatherBandFor(_temperatureC);
+      final selectedBand =
+          suitableWeatherBand ?? _weatherBandFor(_temperatureC);
       final minTemp = suitableMinTempC ?? (_temperatureC - 3);
       final maxTemp = suitableMaxTempC ?? (_temperatureC + 3);
 
@@ -3076,7 +3307,9 @@ class _OutfitScreenState extends State<OutfitScreen>
                                 Container(
                                   padding: const EdgeInsets.all(AppSpacing.xs),
                                   decoration: BoxDecoration(
-                                    color: AppColors.error.withValues(alpha: 0.15),
+                                    color: AppColors.error.withValues(
+                                      alpha: 0.15,
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(

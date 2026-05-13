@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
-import 'package:mano/providers/supabase_provider.dart';
+import 'package:outfitadvisor/providers/supabase_provider.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../models/user_profile.dart';

@@ -272,9 +272,9 @@ Rules:
   - Prefer ONLY wardrobe items.
   - Always include wardrobe_id when using wardrobe source.
 - If Mode is "Mix & Match":
-  - Include exactly 2 wardrobe items (source=wardrobe, with wardrobe_id).
-  - Include exactly 2 missing suggestions (source=ai, wardrobe_id=null).
-  - The 2 AI suggestions must complete the wardrobe pieces into one wearable outfit.
+  - Include 1 or 2 wardrobe items (source=wardrobe, with wardrobe_id).
+  - Fill the remaining pieces with AI suggestions (source=ai, wardrobe_id=null).
+  - The AI suggestions must complete the wardrobe pieces into one wearable outfit.
 - If Mode is "Full Outfit Suggestion":
   - Use source=ai only.
   - Return a complete outfit, not four unrelated product ideas.
@@ -574,10 +574,27 @@ Weather rules:
     }
 
     if (isMixMode) {
+      final targetWardrobeCount = _targetMixWardrobeCount(
+        items: out,
+        wardrobe: wardrobe,
+      );
       var wardrobeCount = out.where((e) => e.source == 'wardrobe').length;
       var aiCount = out.where((e) => e.source == 'ai').length;
 
-      while (wardrobeCount < 2) {
+      if (wardrobeCount > targetWardrobeCount) {
+        for (
+          var i = out.length - 1;
+          i >= 0 && wardrobeCount > targetWardrobeCount;
+          i--
+        ) {
+          if (out[i].source == 'wardrobe') {
+            out.removeAt(i);
+            wardrobeCount--;
+          }
+        }
+      }
+
+      while (wardrobeCount < targetWardrobeCount) {
         final next = wardrobe.items.firstWhere(
           (w) => !usedWardrobeIds.contains(w.id),
           orElse: () => _WardrobeRef.empty,
@@ -619,15 +636,14 @@ Weather rules:
       }
 
       if (out.length < 4) {
-        out.addAll(
-          _fallbackItems(
-            mode: mode,
-            wardrobe: wardrobe,
-            audience: audience,
-            occasion: occasion,
-            temperatureC: temperatureC,
-          ),
-        );
+        final aiFillItems = _fallbackItems(
+          mode: mode,
+          wardrobe: wardrobe,
+          audience: audience,
+          occasion: occasion,
+          temperatureC: temperatureC,
+        ).where((item) => item.source == 'ai');
+        out.addAll(aiFillItems);
       }
 
       if (out.length > 4) {
@@ -733,7 +749,9 @@ Weather rules:
 
       out.add(
         OutfitItem(
-          name: _isWomenAudience(audience) ? 'Essential Blouse' : 'Essential Piece',
+          name: _isWomenAudience(audience)
+              ? 'Essential Blouse'
+              : 'Essential Piece',
           category: 'Tops',
           emoji: _isWomenAudience(audience) ? '\u{1F45A}' : '\u{1F455}',
           source: 'ai',
@@ -756,24 +774,20 @@ Weather rules:
       }
 
       if (isMixMode) {
+        final targetWardrobeCount = _targetMixWardrobeCount(
+          items: out,
+          wardrobe: wardrobe,
+        );
         final wardrobeCount = out.where((e) => e.source == 'wardrobe').length;
-        final aiCount = out.where((e) => e.source == 'ai').length;
 
-        if (wardrobeCount < 2) {
+        if (wardrobeCount < targetWardrobeCount) {
           final before = out.length;
           addWardrobeItem();
           if (out.length == before) addAiItem();
           continue;
         }
 
-        if (aiCount < 2) {
-          addAiItem();
-          continue;
-        }
-
-        final before = out.length;
-        addWardrobeItem();
-        if (out.length == before) addAiItem();
+        addAiItem();
         continue;
       }
 
@@ -781,6 +795,16 @@ Weather rules:
     }
 
     return out.take(4).toList();
+  }
+
+  int _targetMixWardrobeCount({
+    required List<OutfitItem> items,
+    required _WardrobeIndex wardrobe,
+  }) {
+    if (wardrobe.items.isEmpty) return 0;
+    final current = items.where((e) => e.source == 'wardrobe').length;
+    if (current >= 2) return 2;
+    return 1;
   }
 
   /// Finds the best matching wardrobe ID for [raw] using a scoring heuristic

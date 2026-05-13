@@ -1,4 +1,4 @@
-package com.example.mano
+package com.example.outfitadvisor
 
 import io.flutter.embedding.android.FlutterActivity
 
