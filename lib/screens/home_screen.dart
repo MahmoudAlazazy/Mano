@@ -47,8 +47,8 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isSuggestionsLoading = true;
   String? _suggestionsError;
   String _suggestionsTip = 'Matching your weather right now';
-  List<_SuggestionItem> _liveSuggestions = [];   // weather-based suggestions
-  List<_SuggestionItem> _savedSuggestions = [];  // latest saved outfit items
+  List<_SuggestionItem> _liveSuggestions = []; // weather-based suggestions
+  List<_SuggestionItem> _savedSuggestions = []; // latest saved outfit items
   String _savedOutfitTitle = 'Saved Outfit';
 
   // ── Audience filter (0 = Men, 1 = Women) ─────────────────────
@@ -479,28 +479,18 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       final latestOutfit = outfits.first;
-      final collected = _extractSavedItemsFromOutfit(latestOutfit);
-      final title = latestOutfit['name']?.toString().trim();
-
-      // Enrich each item with a clothing image from the API.
-      final enriched = await Future.wait(
-        collected.map((item) async {
-          final result = await _clothingImageService.fetchClothingImage(
-            name: item.name,
-            type: _inferImageType(name: item.name, category: item.category),
-            audience: _audienceSearchValue,
-            allowGenericFallback: false,
-            minConfidenceScore: 8,
-          );
-          return _SuggestionItem(
-            name: item.name,
-            category: item.category,
-            imagePath: result.isSuccess ? result.requestUri?.toString() : null,
-            imageBytes: result.bytes,
-            emoji: _sanitizeEmoji(item.emoji, item.category),
-          );
-        }),
+      final fromNotes = _extractSavedItemsFromOutfit(latestOutfit);
+      final linkedWardrobe = await _linkedWardrobeItemsForOutfit(
+        supabase: supabase,
+        userId: userId,
+        outfit: latestOutfit,
       );
+      final collected = _hydrateSavedOutfitItems(
+        fromNotes: fromNotes,
+        linkedWardrobe: linkedWardrobe,
+      );
+      final title = latestOutfit['name']?.toString().trim();
+      final enriched = await _fillMissingSavedItemImages(collected);
 
       if (!mounted) return;
       setState(() {
@@ -570,10 +560,12 @@ class _HomeScreenState extends State<HomeScreen>
     Map<String, dynamic> outfit,
   ) {
     final notesRaw = outfit['notes'];
-    if (notesRaw is! String || notesRaw.trim().isEmpty) return const [];
+    if (notesRaw == null) return const [];
 
     try {
-      final decoded = jsonDecode(notesRaw);
+      final decoded = notesRaw is String
+          ? (notesRaw.trim().isEmpty ? null : jsonDecode(notesRaw))
+          : notesRaw;
       if (decoded is! Map<String, dynamic>) return const [];
       final itemsRaw = decoded['items'];
       if (itemsRaw is! List) return const [];
@@ -584,19 +576,299 @@ class _HomeScreenState extends State<HomeScreen>
         final name = item['name']?.toString().trim() ?? '';
         final category = item['category']?.toString().trim() ?? '';
         final emoji = item['emoji']?.toString().trim();
+        final imagePath = _normalizeSavedImagePath(item['image_path']);
+        final fallbackPath = _normalizeSavedImagePath(
+          item['fallback_image_path'],
+        );
+        final resolvedImagePath = _preferredSavedImagePath(
+          primary: imagePath,
+          fallback: fallbackPath,
+        );
+        final source = item['source']?.toString().trim().toLowerCase();
+        final wardrobeId = item['wardrobe_id']?.toString().trim();
+        final apiImageName = item['api_image_name']?.toString().trim();
+        final apiImageType = item['api_image_type']?.toString().trim();
+        final apiImageIndexRaw = item['api_image_index'];
+        final apiImageIndex = apiImageIndexRaw is int
+            ? apiImageIndexRaw
+            : int.tryParse(apiImageIndexRaw?.toString() ?? '');
         if (name.isEmpty || category.isEmpty) continue;
         out.add(
           _SuggestionItem(
             name: name,
             category: category,
+            imagePath: resolvedImagePath,
             emoji: _sanitizeEmoji(emoji, category),
+            source: (source != null && source.isNotEmpty) ? source : null,
+            wardrobeId: (wardrobeId != null && wardrobeId.isNotEmpty)
+                ? wardrobeId
+                : null,
+            apiImageName: (apiImageName != null && apiImageName.isNotEmpty)
+                ? apiImageName
+                : null,
+            apiImageType: (apiImageType != null && apiImageType.isNotEmpty)
+                ? apiImageType
+                : null,
+            apiImageIndex: apiImageIndex,
           ),
         );
       }
-      return out;
+      return out.take(4).toList();
     } catch (_) {
       return const [];
     }
+  }
+
+  String? _normalizeSavedImagePath(dynamic raw) {
+    if (raw == null) return null;
+    final value = raw.toString().trim();
+    return value.isEmpty ? null : value;
+  }
+
+  String? _preferredSavedImagePath({String? primary, String? fallback}) {
+    final p = primary?.trim();
+    final f = fallback?.trim();
+    final hasPrimary = p != null && p.isNotEmpty;
+    final hasFallback = f != null && f.isNotEmpty;
+    if (!hasPrimary && !hasFallback) return null;
+
+    // Backward compatibility: older saves may have swapped primary/fallback.
+    if (hasFallback && _isImageApiPath(f) && !_isImageApiPath(p)) {
+      return f;
+    }
+    return hasPrimary ? p : f;
+  }
+
+  bool _isImageApiPath(String? value) {
+    if (value == null) return false;
+    final v = value.toLowerCase();
+    return v.contains('/api/v1/clothing/image') ||
+        v.contains('clothing-search://image');
+  }
+
+  bool _looksAnimatedImagePath(String? value) {
+    if (value == null) return false;
+    final v = value.toLowerCase();
+    return v.contains('.gif') ||
+        v.contains('format=gif') ||
+        v.contains('fm=gif') ||
+        v.contains('image/gif');
+  }
+
+  bool _needsStaticImageReload(_SuggestionItem item) {
+    final hasBytes = item.imageBytes != null && item.imageBytes!.isNotEmpty;
+    if (hasBytes) return false;
+
+    final path = item.imagePath?.trim();
+    final hasImagePath = path != null && path.isNotEmpty;
+    if (!hasImagePath) return true;
+
+    return _isImageApiPath(path) || _looksAnimatedImagePath(path);
+  }
+
+  Future<List<_SuggestionItem>> _linkedWardrobeItemsForOutfit({
+    required SupabaseService supabase,
+    required String userId,
+    required Map<String, dynamic> outfit,
+  }) async {
+    final outfitId = outfit['id']?.toString().trim();
+    if (outfitId == null || outfitId.isEmpty) return const [];
+
+    final detail = await supabase.getOutfitWithItems(outfitId);
+    if (detail == null) return const [];
+    final itemRows = detail['items'];
+    if (itemRows is! List || itemRows.isEmpty) return const [];
+
+    final orderedIds = <String>[];
+    for (final row in itemRows) {
+      if (row is! Map) continue;
+      final id = row['clothing_item_id']?.toString().trim();
+      if (id != null && id.isNotEmpty) {
+        orderedIds.add(id);
+      }
+    }
+    if (orderedIds.isEmpty) return const [];
+
+    final wardrobe = await supabase.getUserClothingItems(userId);
+    if (wardrobe.isEmpty) return const [];
+    final byId = <String, Map<String, dynamic>>{};
+    for (final item in wardrobe) {
+      final id = item['id']?.toString().trim();
+      if (id != null && id.isNotEmpty) {
+        byId[id] = item;
+      }
+    }
+
+    final out = <_SuggestionItem>[];
+    for (final id in orderedIds) {
+      final item = byId[id];
+      if (item == null) continue;
+      final name = item['name']?.toString().trim() ?? '';
+      final category = item['category']?.toString().trim() ?? '';
+      if (name.isEmpty || category.isEmpty) continue;
+      final imageUrl = _normalizeSavedImagePath(item['image_url']);
+      final imagePath = _normalizeSavedImagePath(item['image_path']);
+      out.add(
+        _SuggestionItem(
+          name: name,
+          category: category,
+          imagePath: imageUrl ?? imagePath,
+          emoji: _sanitizeEmoji(item['emoji']?.toString(), category),
+          source: 'wardrobe',
+          wardrobeId: id,
+        ),
+      );
+    }
+    return out;
+  }
+
+  List<_SuggestionItem> _hydrateSavedOutfitItems({
+    required List<_SuggestionItem> fromNotes,
+    required List<_SuggestionItem> linkedWardrobe,
+  }) {
+    if (fromNotes.isEmpty) return linkedWardrobe.take(4).toList();
+    if (linkedWardrobe.isEmpty) return fromNotes.take(4).toList();
+
+    final linkedById = <String, _SuggestionItem>{};
+    for (final item in linkedWardrobe) {
+      final id = item.wardrobeId?.trim();
+      if (id != null && id.isNotEmpty) {
+        linkedById[id] = item;
+      }
+    }
+
+    final out = <_SuggestionItem>[];
+    final usedLinkedIds = <String>{};
+
+    String signature(_SuggestionItem item) {
+      final wardrobeId = item.wardrobeId?.trim();
+      if (wardrobeId != null && wardrobeId.isNotEmpty) {
+        return 'wardrobe:$wardrobeId:${item.name.toLowerCase()}';
+      }
+      final imageRef = item.imagePath?.toLowerCase() ?? '';
+      return 'item:${item.name.toLowerCase()}|${item.category.toLowerCase()}|$imageRef';
+    }
+
+    final seenSignatures = <String>{};
+    void addUnique(_SuggestionItem item) {
+      final key = signature(item);
+      if (seenSignatures.add(key)) out.add(item);
+    }
+
+    _SuggestionItem? matchLinkedWardrobe(_SuggestionItem noteItem) {
+      final noteId = noteItem.wardrobeId?.trim();
+      if (noteId != null && noteId.isNotEmpty) {
+        final matched = linkedById[noteId];
+        if (matched != null) return matched;
+      }
+
+      final noteName = noteItem.name.toLowerCase().trim();
+      final noteCategory = noteItem.category.toLowerCase().trim();
+      for (final linked in linkedWardrobe) {
+        final linkedId = linked.wardrobeId?.trim();
+        if (linkedId == null || linkedId.isEmpty) continue;
+        if (usedLinkedIds.contains(linkedId)) continue;
+        if (linked.category.toLowerCase().trim() != noteCategory) continue;
+        final linkedName = linked.name.toLowerCase().trim();
+        if (linkedName == noteName ||
+            linkedName.contains(noteName) ||
+            noteName.contains(linkedName)) {
+          return linked;
+        }
+      }
+      return null;
+    }
+
+    for (final noteItem in fromNotes) {
+      _SuggestionItem resolved = noteItem;
+      if (noteItem.source == 'wardrobe') {
+        final matched = matchLinkedWardrobe(noteItem);
+        if (matched != null) {
+          final matchedId = matched.wardrobeId?.trim();
+          if (matchedId != null && matchedId.isNotEmpty) {
+            usedLinkedIds.add(matchedId);
+          }
+          resolved = _SuggestionItem(
+            name: matched.name,
+            category: matched.category,
+            imagePath: matched.imagePath ?? noteItem.imagePath,
+            imageBytes: matched.imageBytes ?? noteItem.imageBytes,
+            emoji: matched.emoji ?? noteItem.emoji,
+            source: 'wardrobe',
+            wardrobeId: matched.wardrobeId ?? noteItem.wardrobeId,
+            apiImageName: noteItem.apiImageName,
+            apiImageType: noteItem.apiImageType,
+            apiImageIndex: noteItem.apiImageIndex,
+          );
+        }
+      }
+      addUnique(resolved);
+      if (out.length >= 4) break;
+    }
+
+    if (out.length < 4) {
+      for (final linked in linkedWardrobe) {
+        final linkedId = linked.wardrobeId?.trim();
+        if (linkedId == null || linkedId.isEmpty) continue;
+        if (usedLinkedIds.contains(linkedId)) continue;
+        addUnique(linked);
+        if (out.length >= 4) break;
+      }
+    }
+
+    return out.take(4).toList();
+  }
+
+  Future<List<_SuggestionItem>> _fillMissingSavedItemImages(
+    List<_SuggestionItem> items,
+  ) async {
+    if (items.isEmpty) return items;
+
+    return Future.wait(
+      items.map((item) async {
+        final existingPath = item.imagePath?.trim();
+        final hasImagePath = existingPath != null && existingPath.isNotEmpty;
+        final shouldReload = _needsStaticImageReload(item);
+        if (!shouldReload) return item;
+
+        final queryName =
+            (item.apiImageName != null && item.apiImageName!.trim().isNotEmpty)
+            ? item.apiImageName!.trim()
+            : item.name;
+        final queryType =
+            (item.apiImageType != null && item.apiImageType!.trim().isNotEmpty)
+            ? item.apiImageType!.trim()
+            : _inferImageType(name: item.name, category: item.category);
+
+        final result = await _clothingImageService.fetchClothingImage(
+          name: queryName,
+          type: queryType,
+          audience: _audienceSearchValue,
+          index: item.apiImageIndex,
+          allowGenericFallback: false,
+          minConfidenceScore: 8,
+        );
+        final canReuseExistingPath =
+            hasImagePath &&
+            !_looksAnimatedImagePath(existingPath) &&
+            !_isImageApiPath(existingPath);
+        final resolvedPath = result.isSuccess
+            ? result.requestUri?.toString()
+            : (canReuseExistingPath ? existingPath : null);
+        return _SuggestionItem(
+          name: item.name,
+          category: item.category,
+          imagePath: resolvedPath,
+          imageBytes: result.isSuccess ? result.bytes : null,
+          emoji: item.emoji,
+          source: item.source,
+          wardrobeId: item.wardrobeId,
+          apiImageName: item.apiImageName,
+          apiImageType: item.apiImageType,
+          apiImageIndex: item.apiImageIndex,
+        );
+      }),
+    );
   }
 
   /// Infers a clothing image search type from the item's [name] and [category].
@@ -606,7 +878,9 @@ class _HomeScreenState extends State<HomeScreen>
     if (text.contains('watch')) return 'watch';
     if (text.contains('sunglass')) return 'sunglasses';
     if (text.contains('cap') || text.contains('hat')) return 'cap';
-    if (text.contains('bag') || text.contains('tote') || text.contains('clutch')) {
+    if (text.contains('bag') ||
+        text.contains('tote') ||
+        text.contains('clutch')) {
       return 'bag';
     }
     if (text.contains('boot')) return 'boots';
@@ -906,7 +1180,9 @@ class _HomeScreenState extends State<HomeScreen>
                         child: Align(
                           alignment: Alignment.topCenter,
                           child: ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: _contentMaxWidth),
+                            constraints: BoxConstraints(
+                              maxWidth: _contentMaxWidth,
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -915,15 +1191,18 @@ class _HomeScreenState extends State<HomeScreen>
                                   userName: userName,
                                   profileImagePath: profile?.imagePath,
                                   isMobile: _isMobile,
-                                  onProfileTap: () =>
-                                      Navigator.pushNamed(context, AppRoutes.profile),
+                                  onProfileTap: () => Navigator.pushNamed(
+                                    context,
+                                    AppRoutes.profile,
+                                  ),
                                 ),
                                 const SizedBox(height: AppSpacing.md),
 
                                 // ── Weather card ─────────────────────────────
                                 _HomeGlassPanel(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       if (_isWeatherLoading)
                                         const Align(
@@ -941,7 +1220,9 @@ class _HomeScreenState extends State<HomeScreen>
                                         ),
                                       // Tap the card to manually refresh weather.
                                       GestureDetector(
-                                        onTap: _isWeatherLoading ? null : _loadWeather,
+                                        onTap: _isWeatherLoading
+                                            ? null
+                                            : _loadWeather,
                                         child: WeatherCard(
                                           temperature: _temperatureText,
                                           location: _locationLabel,
@@ -958,29 +1239,36 @@ class _HomeScreenState extends State<HomeScreen>
                                 // ── Quick actions grid ───────────────────────
                                 const _HomeSectionHeader(
                                   title: 'Quick Actions',
-                                  subtitle: 'Everything you need for today in one place',
+                                  subtitle:
+                                      'Everything you need for today in one place',
                                 ),
                                 const SizedBox(height: AppSpacing.sm),
                                 _HomeGlassPanel(
-                                  padding: const EdgeInsets.all(AppSpacing.sm + 4),
+                                  padding: const EdgeInsets.all(
+                                    AppSpacing.sm + 4,
+                                  ),
                                   child: GridView.builder(
                                     shrinkWrap: true,
-                                    physics: const NeverScrollableScrollPhysics(),
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
                                     itemCount: _actions.length,
                                     gridDelegate:
                                         SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: _gridCrossAxisCount.toInt(),
-                                      mainAxisSpacing: _gridSpacing,
-                                      crossAxisSpacing: _gridSpacing,
-                                      childAspectRatio: _gridChildAspectRatio,
-                                    ),
+                                          crossAxisCount: _gridCrossAxisCount
+                                              .toInt(),
+                                          mainAxisSpacing: _gridSpacing,
+                                          crossAxisSpacing: _gridSpacing,
+                                          childAspectRatio:
+                                              _gridChildAspectRatio,
+                                        ),
                                     itemBuilder: (context, i) {
                                       final action = _actions[i];
                                       return QuickActionCard(
                                         icon: action.icon,
                                         title: action.title,
                                         subtitle: action.subtitle,
-                                        onTap: () => _openActionRoute(action.route),
+                                        onTap: () =>
+                                            _openActionRoute(action.route),
                                       );
                                     },
                                   ),
@@ -1008,7 +1296,8 @@ class _HomeScreenState extends State<HomeScreen>
                                 const SizedBox(height: AppSpacing.sm),
                                 _HomeGlassPanel(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       _AudienceSelector(
                                         selectedIndex: _selectedAudience,
@@ -1041,7 +1330,8 @@ class _HomeScreenState extends State<HomeScreen>
                                 // ── Saved outfit preview ─────────────────────
                                 _HomeSectionHeader(
                                   title: _savedOutfitTitle,
-                                  subtitle: 'Latest saved look from your wardrobe',
+                                  subtitle:
+                                      'Latest saved look from your wardrobe',
                                   trailing: TextButton.icon(
                                     onPressed: _savedSuggestions.length < 2
                                         ? null
@@ -1187,9 +1477,7 @@ class _HomeGlassPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface.withValues(alpha: 0.93),
         borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(
-          color: AppColors.border.withValues(alpha: 0.9),
-        ),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.9)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -1239,16 +1527,10 @@ class _HomeHeroCard extends StatelessWidget {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Color(0xFFB57A67),
-                Color(0xFF8A5646),
-                Color(0xFF643B31),
-              ],
+              colors: [Color(0xFFB57A67), Color(0xFF8A5646), Color(0xFF643B31)],
             ),
             borderRadius: BorderRadius.circular(AppRadius.xl),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.24),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.16),
@@ -1332,7 +1614,8 @@ class _HomeHeroCard extends StatelessWidget {
                       ),
                     ),
                     child: ClipOval(
-                      child: (profileImagePath != null &&
+                      child:
+                          (profileImagePath != null &&
                               profileImagePath!.isNotEmpty)
                           ? Image.network(
                               profileImagePath!,
@@ -1459,22 +1742,32 @@ class _SuggestionItem {
   final String? imagePath;
   final Uint8List? imageBytes;
   final String? emoji;
+  final String? source; // "wardrobe" | "ai"
+  final String? wardrobeId;
+  final String? apiImageName;
+  final String? apiImageType;
+  final int? apiImageIndex;
   const _SuggestionItem({
     required this.name,
     required this.category,
     this.imagePath,
     this.imageBytes,
     this.emoji,
+    this.source,
+    this.wardrobeId,
+    this.apiImageName,
+    this.apiImageType,
+    this.apiImageIndex,
   });
 }
 
 /// A template used to drive clothing image searches before images are fetched.
 class _SuggestionSeed {
   final String searchName; // query passed to the image API
-  final String type;       // clothing type hint for the API
-  final String label;      // display name shown to the user
-  final String category;   // e.g. 'Top', 'Bottom', 'Shoes'
-  final String emoji;      // fallback icon
+  final String type; // clothing type hint for the API
+  final String label; // display name shown to the user
+  final String category; // e.g. 'Top', 'Bottom', 'Shoes'
+  final String emoji; // fallback icon
   const _SuggestionSeed({
     required this.searchName,
     required this.type,

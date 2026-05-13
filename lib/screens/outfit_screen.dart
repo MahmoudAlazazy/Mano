@@ -3078,6 +3078,35 @@ class _OutfitScreenState extends State<OutfitScreen>
       final minTemp = suitableMinTempC ?? (_temperatureC - 3);
       final maxTemp = suitableMaxTempC ?? (_temperatureC + 3);
 
+      final noteItems = <Map<String, dynamic>>[];
+
+      String? normalizedImagePath(String? value) {
+        if (value == null) return null;
+        final trimmed = value.trim();
+        return trimmed.isEmpty ? null : trimmed;
+      }
+
+      for (final piece in items) {
+        final wardrobeId = piece.wardrobeId?.trim();
+        final isWardrobePiece = wardrobeId != null && wardrobeId.isNotEmpty;
+        final primaryImagePath = normalizedImagePath(piece.imagePath);
+        final sourceImagePath = normalizedImagePath(piece.apiSourceImageUrl);
+        noteItems.add({
+          'name': piece.name,
+          'category': piece.category,
+          'emoji': piece.emoji,
+          // Keep the exact rendered image URL first (image service endpoint).
+          'image_path': primaryImagePath ?? sourceImagePath,
+          // Keep source URL only as fallback metadata.
+          'fallback_image_path': sourceImagePath,
+          'source': isWardrobePiece ? 'wardrobe' : 'ai',
+          'wardrobe_id': isWardrobePiece ? wardrobeId : null,
+          'api_image_name': piece.apiImageName,
+          'api_image_type': piece.apiImageType,
+          'api_image_index': piece.apiImageIndex,
+        });
+      }
+
       final notesJson = jsonEncode({
         'generated_at': DateTime.now().toIso8601String(),
         'mode': _options[_selectedOption].title,
@@ -3090,16 +3119,7 @@ class _OutfitScreenState extends State<OutfitScreen>
         'suitable_weather': _weatherBandText(selectedBand),
         'suitable_temp_min_c': minTemp,
         'suitable_temp_max_c': maxTemp,
-        'items': items
-            .map(
-              (e) => {
-                'name': e.name,
-                'category': e.category,
-                'emoji': e.emoji,
-                'image_path': e.imagePath,
-              },
-            )
-            .toList(),
+        'items': noteItems,
       });
 
       await outfitProvider.createOutfit(

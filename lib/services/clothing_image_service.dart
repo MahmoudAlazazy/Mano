@@ -13,7 +13,8 @@ import 'package:http/http.dart' as http;
 /// - **External API mode**: forwards requests to a hosted image-lookup service
 ///   whose base URL(s) are supplied via `CLOTHING_IMAGE_API_BASE_URL(S)`.
 class ClothingImageService {
-  ClothingImageService({http.Client? client}) : _client = client ?? http.Client();
+  ClothingImageService({http.Client? client})
+    : _client = client ?? http.Client();
 
   final http.Client _client;
 
@@ -77,7 +78,8 @@ class ClothingImageService {
 
   /// Shared browser identity headers included in every request.
   static const Map<String, String> _browserHeaders = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
         'AppleWebKit/537.36 (KHTML, like Gecko) '
         'Chrome/124.0.0.0 Safari/537.36',
     'Accept-Language': 'en-US,en;q=0.9',
@@ -292,11 +294,12 @@ class ClothingImageService {
         bytes[7] == 0x0A) {
       return 'image/png';
     }
+    // Intentionally reject GIFs so UI surfaces static outfit photos only.
     if (bytes[0] == 0x47 &&
         bytes[1] == 0x49 &&
         bytes[2] == 0x46 &&
         (bytes[3] == 0x38 && (bytes[4] == 0x37 || bytes[4] == 0x39))) {
-      return 'image/gif';
+      return null;
     }
     if (bytes.length >= 12 &&
         bytes[0] == 0x52 &&
@@ -677,7 +680,9 @@ class ClothingImageService {
       return _containsScorePhrase(text, token);
     });
     final typeTokens = _typeKeywords('', type);
-    final typeHit = typeTokens.any((token) => _containsScorePhrase(text, token));
+    final typeHit = typeTokens.any(
+      (token) => _containsScorePhrase(text, token),
+    );
     if (strictTypeHit) {
       score += 12;
     } else if (typeHit) {
@@ -718,7 +723,9 @@ class ClothingImageService {
         value.contains('girl')) {
       return "women's";
     }
-    if (value.contains('men') || value.contains('male') || value.contains('boy')) {
+    if (value.contains('men') ||
+        value.contains('male') ||
+        value.contains('boy')) {
       return "men's";
     }
     return null;
@@ -741,7 +748,10 @@ class ClothingImageService {
     } else {
       trimmed = trimmed
           .replaceAll(
-            RegExp(r"\bwomen'?s?\b|\bfemale\b|\bgirls?\b", caseSensitive: false),
+            RegExp(
+              r"\bwomen'?s?\b|\bfemale\b|\bgirls?\b",
+              caseSensitive: false,
+            ),
             '',
           )
           .replaceAll(RegExp(r'\s+'), ' ')
@@ -752,7 +762,9 @@ class ClothingImageService {
         ? (lower.contains('women') ||
               lower.contains('female') ||
               lower.contains('girl'))
-        : (lower.contains('men') || lower.contains('male') || lower.contains('boy'));
+        : (lower.contains('men') ||
+              lower.contains('male') ||
+              lower.contains('boy'));
     if (hasTargetAudience) {
       return trimmed;
     }
@@ -818,14 +830,16 @@ class ClothingImageService {
         try {
           final decodedJson = jsonDecode(_decodeSearchUrl(rawJson));
           if (decodedJson is! Map<String, dynamic>) continue;
-          final imageUrl = decodedJson['murl']?.toString() ??
+          final imageUrl =
+              decodedJson['murl']?.toString() ??
               decodedJson['imgurl']?.toString() ??
               '';
           if (imageUrl.trim().isEmpty) continue;
           hits.add(
             _ImageSearchHit(
               url: imageUrl,
-              title: decodedJson['t']?.toString() ??
+              title:
+                  decodedJson['t']?.toString() ??
                   decodedJson['desc']?.toString(),
               pageUrl: decodedJson['purl']?.toString(),
               source: 'Bing',
@@ -931,7 +945,9 @@ class ClothingImageService {
       }
 
       final decoded = jsonDecode(response.body);
-      final results = decoded is Map<String, dynamic> ? decoded['results'] : null;
+      final results = decoded is Map<String, dynamic>
+          ? decoded['results']
+          : null;
       final hits = <_ImageSearchHit>[];
       if (results is List) {
         for (final raw in results) {
@@ -984,7 +1000,8 @@ class ClothingImageService {
             uri,
             headers: const <String, String>{
               ..._browserHeaders,
-              'Accept': 'text/html,application/xhtml+xml,application/xml;'
+              'Accept':
+                  'text/html,application/xhtml+xml,application/xml;'
                   'q=0.9,image/webp,*/*;q=0.8',
               'Referer': 'https://www.google.com/',
             },
@@ -1025,7 +1042,10 @@ class ClothingImageService {
       );
       return unique;
     } catch (e) {
-      developer.log('Google failed for $query: $e', name: 'ClothingImageService');
+      developer.log(
+        'Google failed for $query: $e',
+        name: 'ClothingImageService',
+      );
       return <_ImageSearchHit>[];
     }
   }
@@ -1038,13 +1058,16 @@ class ClothingImageService {
   }) async {
     final engines =
         <({String name, Future<List<_ImageSearchHit>> Function() run})>[
-      (name: 'Bing', run: () => _searchBing(query, maxResults: maxResults)),
-      (
-        name: 'DuckDuckGo',
-        run: () => _searchDuckDuckGo(query, maxResults: maxResults),
-      ),
-      (name: 'Google', run: () => _searchGoogle(query, maxResults: maxResults)),
-    ];
+          (name: 'Bing', run: () => _searchBing(query, maxResults: maxResults)),
+          (
+            name: 'DuckDuckGo',
+            run: () => _searchDuckDuckGo(query, maxResults: maxResults),
+          ),
+          (
+            name: 'Google',
+            run: () => _searchGoogle(query, maxResults: maxResults),
+          ),
+        ];
 
     for (final engine in engines) {
       final urls = await engine.run();
@@ -1099,7 +1122,9 @@ class ClothingImageService {
         ),
     ];
 
-    if (preferredIndex != null && preferredIndex >= 0 && candidates.isNotEmpty) {
+    if (preferredIndex != null &&
+        preferredIndex >= 0 &&
+        candidates.isNotEmpty) {
       final start = preferredIndex >= candidates.length
           ? candidates.length - 1
           : preferredIndex;
@@ -1109,13 +1134,14 @@ class ClothingImageService {
       ];
     }
 
-    final confident = candidates
-        .where((candidate) => candidate.score >= minConfidenceScore)
-        .toList()
-      ..sort((a, b) {
-        final byScore = b.score.compareTo(a.score);
-        return byScore == 0 ? a.index.compareTo(b.index) : byScore;
-      });
+    final confident =
+        candidates
+            .where((candidate) => candidate.score >= minConfidenceScore)
+            .toList()
+          ..sort((a, b) {
+            final byScore = b.score.compareTo(a.score);
+            return byScore == 0 ? a.index.compareTo(b.index) : byScore;
+          });
     final rest = candidates
         .where((candidate) => candidate.score < minConfidenceScore)
         .toList();
@@ -1305,7 +1331,11 @@ class ClothingImageService {
     }.toList();
 
     ClothingImageFetchResult? lastResult;
-    for (var baseIndex = 0; baseIndex < _candidateBaseUrls.length; baseIndex++) {
+    for (
+      var baseIndex = 0;
+      baseIndex < _candidateBaseUrls.length;
+      baseIndex++
+    ) {
       final base = _candidateBaseUrls[baseIndex];
       final timeout = baseIndex == 0
           ? _primaryRequestTimeout
@@ -1551,13 +1581,16 @@ class ClothingImageService {
       }
     } catch (e) {
       lastError = e.toString();
-      developer.log('Internal image lookup failed: $e', name: 'ClothingImageService');
+      developer.log(
+        'Internal image lookup failed: $e',
+        name: 'ClothingImageService',
+      );
     }
 
     if (fallbackAllowed) {
       final fallbackBytes = await _fetchFallbackImageBytes(
-          name: name,
-          type: normalizedType,
+        name: name,
+        type: normalizedType,
       );
       if (fallbackBytes != null) {
         developer.log(
@@ -1845,11 +1878,7 @@ class _DownloadedImage {
 /// The outcome of a [ClothingImageService._downloadFirstValidImage] call,
 /// including the number of URLs attempted and the winning image (if any).
 class _DownloadSelection {
-  const _DownloadSelection({
-    required this.attempts,
-    this.image,
-    this.error,
-  });
+  const _DownloadSelection({required this.attempts, this.image, this.error});
 
   final int attempts;
   final _DownloadedImage? image;
